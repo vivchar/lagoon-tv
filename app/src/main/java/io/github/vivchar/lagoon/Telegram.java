@@ -212,7 +212,7 @@ final class Telegram {
         return out;
     }
 
-    void clear() {
+    synchronized void clear() {
         try {
             JSONArray a = new JSONArray(prefs.getString("messages", "[]"));
             for (int i = 0; i < a.length(); i++) forget(a.getJSONObject(i));
@@ -234,13 +234,15 @@ final class Telegram {
         }
     }
 
-    void dismiss(long id) {
+    /** Message ids are counted per chat, so a note is known by its sender and id together. */
+    synchronized void dismiss(long from, long id) {
         try {
             JSONArray a = new JSONArray(prefs.getString("messages", "[]"));
             JSONArray b = new JSONArray();
             for (int i = 0; i < a.length(); i++) {
-                if (a.getJSONObject(i).getLong("id") != id) b.put(a.get(i));
-                else forget(a.getJSONObject(i));
+                JSONObject o = a.getJSONObject(i);
+                if (o.getLong("id") != id || o.getLong("from") != from) b.put(o);
+                else forget(o);
             }
             prefs.edit().putString("messages", b.toString()).apply();
         } catch (Exception ignored) {
@@ -248,7 +250,8 @@ final class Telegram {
         changed();
     }
 
-    private void add(Msg m) {
+    // the poll thread and a release thread both rewrite these lists, so they take turns
+    private synchronized void add(Msg m) {
         try {
             JSONArray a = new JSONArray(prefs.getString("messages", "[]"));
             a.put(json(m));
@@ -264,31 +267,59 @@ final class Telegram {
                 .put("text", m.text == null ? "" : m.text).put("photo", m.photo).put("kind", m.kind).put("clip", m.clip);
     }
 
-    /** Keeps a message from someone not yet let in, until the TV answers their request. */
-    private void hold(Msg m) {
+    /**
+     * Keeps a message from someone not yet let in, until the TV answers their request. It is kept as Telegram
+     * sent it: nothing from a stranger is downloaded until the TV says yes.
+     */
+    private synchronized void hold(JSONObject m) {
         try {
             JSONArray a = new JSONArray(prefs.getString("held", "[]"));
-            a.put(json(m));
+            a.put(m);
             while (a.length() > 30) forget(a.remove(0));
             prefs.edit().putString("held", a.toString()).apply();
         } catch (Exception ignored) {
         }
     }
 
-    /** Lets a person's held messages through (yes) or drops them (no). */
+    /**
+     * Lets a person's held messages through (yes) or drops them (no). Raw messages are turned into notes on a
+     * thread of their own, since that downloads their media; notes held by an older build go straight through.
+     */
     private void release(long user, boolean show) {
-        try {
-            JSONArray held = new JSONArray(prefs.getString("held", "[]")), keep = new JSONArray();
-            JSONArray shown = new JSONArray(prefs.getString("messages", "[]"));
-            for (int i = 0; i < held.length(); i++) {
-                JSONObject o = held.getJSONObject(i);
-                if (o.getLong("from") != user) keep.put(o);
-                else if (show) shown.put(o);
+        List<JSONObject> raw = new ArrayList<>();
+        synchronized (this) {
+            try {
+                JSONArray held = new JSONArray(prefs.getString("held", "[]")), keep = new JSONArray();
+                JSONArray shown = new JSONArray(prefs.getString("messages", "[]"));
+                for (int i = 0; i < held.length(); i++) {
+                    JSONObject o = held.getJSONObject(i);
+                    if (sender(o) != user) keep.put(o);
+                    else if (!show) forget(o);
+                    else if (o.has("message_id")) raw.add(o);
+                    else shown.put(o);
+                }
+                while (shown.length() > 30) forget(shown.remove(0));
+                prefs.edit().putString("held", keep.toString()).putString("messages", shown.toString()).apply();
+            } catch (Exception ignored) {
             }
-            while (shown.length() > 30) forget(shown.remove(0));
-            prefs.edit().putString("held", keep.toString()).putString("messages", shown.toString()).apply();
-        } catch (Exception ignored) {
         }
+        if (raw.isEmpty()) return;
+        new Thread(() -> {
+            for (JSONObject o : raw) {
+                try {
+                    Msg n = note(o);
+                    if (n != null) add(n);
+                } catch (Exception e) {
+                    Log.w("Telegram", "release: " + safe(e));
+                }
+            }
+        }, "telegram-release").start();
+    }
+
+    /** Who sent a held entry: a raw message has a "from" object, an old note just the id. */
+    private static long sender(JSONObject o) throws Exception {
+        JSONObject from = o.optJSONObject("from");
+        return from != null ? from.getLong("id") : o.getLong("from");
     }
 
     File avatar(long user) {
@@ -341,7 +372,7 @@ final class Telegram {
                 changed();
             } catch (Exception e) {
                 status = "Нет связи с Telegram";
-                Log.w("Telegram", "poll", e);
+                Log.w("Telegram", "poll: " + safe(e));
                 changed();
                 try {
                     Thread.sleep(15000);
@@ -415,15 +446,31 @@ final class Telegram {
             send(id, "Пишите сюда, и сообщение появится на главном экране телевизора. /clear — убрать все.");
             return;
         }
+        if (held) {
+            hold(m);
+            return;
+        }
+        Msg msg = note(m);
+        if (msg == null) return;
+        add(msg);
+        if (confirm()) send(id, "Показано на телевизоре.");
+    }
+
+    /** Turns a message into a note, downloading its media; null when there is nothing to show. */
+    private Msg note(JSONObject m) throws Exception {
+        JSONObject from = m.getJSONObject("from");
+        long id = from.getLong("id");
         fetchAvatar(id);
         Msg msg = new Msg();
         msg.id = m.getLong("message_id");
         msg.from = id;
         msg.date = m.getLong("date");
-        msg.name = name.trim();
-        msg.text = text;
+        msg.name = (from.optString("first_name", "") + (from.has("last_name") ? " " + from.optString("last_name") : "")).trim();
+        msg.text = m.optString("text", m.optString("caption", ""));
         JSONArray photos = m.optJSONArray("photo");
-        File f = new File(ctx.getFilesDir(), "photos/" + msg.id);
+        // message ids are counted per chat: the sender in the name keeps two people's files apart
+        String base = "photos/" + id + "_" + msg.id;
+        File f = new File(ctx.getFilesDir(), base);
         JSONObject sticker = m.optJSONObject("sticker"), doc = m.optJSONObject("document");
         JSONObject moving = m.has("animation") ? m.optJSONObject("animation") : m.has("video") ? m.optJSONObject("video") : m.optJSONObject("video_note");
         if (photos != null && photos.length() > 0) {
@@ -440,8 +487,8 @@ final class Telegram {
         } else if (m.has("animation")) {
             // a GIF plays on the card; one that cannot be fetched is not shown at all rather than as a still
             JSONObject gif = m.getJSONObject("animation");
-            File clip = new File(ctx.getFilesDir(), "photos/" + msg.id + ".mp4");
-            if (gif.optLong("file_size") > 15_000_000 || !download(gif.getString("file_id"), clip)) return;
+            File clip = new File(ctx.getFilesDir(), base + ".mp4");
+            if (gif.optLong("file_size") > 15_000_000 || !download(gif.getString("file_id"), clip)) return null;
             msg.clip = clip.getPath();
             msg.kind = "gif";
             String still = thumb(gif);
@@ -451,7 +498,7 @@ final class Telegram {
             boolean round = m.has("video_note");
             String fileId = thumb(moving);
             if (fileId != null && download(fileId, f)) msg.photo = f.getPath();
-            File clip = new File(ctx.getFilesDir(), "photos/" + msg.id + ".mp4");
+            File clip = new File(ctx.getFilesDir(), base + ".mp4");
             if (moving.optLong("file_size") <= MAX_FILE && download(moving.getString("file_id"), clip)) msg.clip = clip.getPath();
             if (msg.photo != null || msg.clip != null) msg.kind = round ? "round" : "video";
             else if (msg.text.isEmpty()) msg.text = round ? "Видеосообщение" : "Видео";
@@ -461,7 +508,7 @@ final class Telegram {
             int sec = m.getJSONObject("voice").optInt("duration");
             msg.text = String.format(java.util.Locale.US, "Голосовое · %d:%02d", sec / 60, sec % 60);
             msg.kind = "voice";
-            File clip = new File(ctx.getFilesDir(), "photos/" + msg.id + ".ogg");
+            File clip = new File(ctx.getFilesDir(), base + ".ogg");
             if (download(m.getJSONObject("voice").getString("file_id"), clip)) msg.clip = clip.getPath();
         } else if (m.has("audio") && msg.text.isEmpty()) {
             JSONObject a = m.getJSONObject("audio");
@@ -469,7 +516,7 @@ final class Telegram {
             msg.text = title.startsWith("—") ? title.substring(1).trim() : title;
             if (msg.text.isEmpty()) msg.text = "Аудио";
             msg.kind = "audio";
-            File clip = new File(ctx.getFilesDir(), "photos/" + msg.id + ".audio");
+            File clip = new File(ctx.getFilesDir(), base + ".audio");
             if (a.optLong("file_size") <= MAX_FILE && download(a.getString("file_id"), clip)) msg.clip = clip.getPath();
         } else if (m.has("location") && msg.text.isEmpty()) {
             // a venue is a place picked from the map: its name says more than the coordinates
@@ -477,13 +524,8 @@ final class Telegram {
             msg.text = v != null ? (v.optString("title") + (v.optString("address").isEmpty() ? "" : "\n" + v.optString("address"))).trim() : "Геопозиция";
             msg.kind = "place";
         }
-        if (msg.text.isEmpty() && msg.photo == null && msg.clip == null) return;
-        if (held) {
-            hold(msg);
-            return;
-        }
-        add(msg);
-        if (confirm()) send(id, "Показано на телевизоре.");
+        if (msg.text.isEmpty() && msg.photo == null && msg.clip == null) return null;
+        return msg;
     }
 
     /** The file id of a media's preview still, or null. */
@@ -502,7 +544,7 @@ final class Telegram {
             JSONArray sizes = photos.getJSONArray(0);
             download(sizes.getJSONObject(0).getString("file_id"), f);
         } catch (Exception e) {
-            Log.w("Telegram", "avatar", e);
+            Log.w("Telegram", "avatar: " + safe(e));
         }
     }
 
@@ -520,7 +562,7 @@ final class Telegram {
             }
             return true;
         } catch (Exception e) {
-            Log.w("Telegram", "download", e);
+            Log.w("Telegram", "download: " + safe(e));
             return false;
         }
     }
@@ -530,9 +572,19 @@ final class Telegram {
             try {
                 api("sendMessage", "chat_id=" + chat + "&text=" + URLEncoder.encode(text, "UTF-8"));
             } catch (Exception e) {
-                Log.w("Telegram", "send", e);
+                Log.w("Telegram", "send: " + safe(e));
             }
         }).start();
+    }
+
+    /**
+     * An error for the log without the bot token: Bot API URLs carry it in the path, and an IOException message
+     * often quotes the URL. No stack trace either, since a cause's message can quote it too.
+     */
+    private String safe(Exception e) {
+        String s = e.getClass().getSimpleName() + ": " + e.getMessage();
+        String t = token();
+        return t.isEmpty() ? s : s.replace(t, "<token>");
     }
 
     private JSONObject api(String method, String query) throws Exception {

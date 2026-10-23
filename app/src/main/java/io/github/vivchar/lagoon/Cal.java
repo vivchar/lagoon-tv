@@ -12,6 +12,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -195,22 +196,56 @@ final class Cal {
         if (done != null) main.post(done);
     }
 
+    /** A big shared calendar runs to a few MB; anything far past that is not one. */
+    private static final int MAX_CHARS = 8_000_000;
+
+    /**
+     * Reads an iCal file. The address comes from a Telegram message, so it is held to https on a public host,
+     * redirects included (checked hop by hop), and the size is capped: a link must not reach the router or
+     * another box on the home network, nor fill the stick's memory.
+     */
     private static List<String> fetch(String url) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(30000);
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-            String l;
-            while ((l = r.readLine()) != null) {
-                // folded lines continue with a space or a tab
-                if ((l.startsWith(" ") || l.startsWith("\t")) && !lines.isEmpty()) lines.set(lines.size() - 1, lines.get(lines.size() - 1) + l.substring(1));
-                else lines.add(l);
+        URL u = new URL(url.replaceFirst("^(?:webcal|http)://", "https://"));
+        for (int hop = 0; ; hop++) {
+            if (!"https".equals(u.getProtocol())) throw new Exception("not https");
+            for (InetAddress a : InetAddress.getAllByName(u.getHost())) if (!publicAddress(a)) throw new Exception("private address");
+            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+            conn.setInstanceFollowRedirects(false);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            try {
+                int code = conn.getResponseCode();
+                if (code >= 300 && code < 400) {
+                    String to = conn.getHeaderField("Location");
+                    if (to == null || hop >= 5) throw new Exception("redirect " + code);
+                    u = new URL(u, to);
+                    continue;
+                }
+                if (conn.getContentLengthLong() > MAX_CHARS) throw new Exception("too big");
+                List<String> lines = new ArrayList<>();
+                long total = 0;
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                    String l;
+                    while ((l = r.readLine()) != null) {
+                        if ((total += l.length() + 1) > MAX_CHARS) throw new Exception("too big");
+                        // folded lines continue with a space or a tab
+                        if ((l.startsWith(" ") || l.startsWith("\t")) && !lines.isEmpty()) lines.set(lines.size() - 1, lines.get(lines.size() - 1) + l.substring(1));
+                        else lines.add(l);
+                    }
+                }
+                return lines;
+            } finally {
+                conn.disconnect();
             }
-        } finally {
-            conn.disconnect();
         }
-        return lines;
+    }
+
+    /** False for loopback, private, link-local, carrier-NAT, unique-local and multicast addresses. */
+    private static boolean publicAddress(InetAddress a) {
+        if (a.isLoopbackAddress() || a.isAnyLocalAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress() || a.isMulticastAddress()) return false;
+        byte[] b = a.getAddress();
+        if (b.length == 4) return !((b[0] & 0xFF) == 100 && (b[1] & 0xC0) == 64) && (b[0] & 0xFF) != 0;
+        return (b[0] & 0xFE) != 0xFC;   // fc00::/7
     }
 
     /** The events of an iCal file that happen today, recurring ones included (daily, weekly, monthly, yearly). */

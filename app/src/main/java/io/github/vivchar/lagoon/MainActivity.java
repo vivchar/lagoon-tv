@@ -138,10 +138,20 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     /** Testing: --es phase sunset pins a moment of the day, --ef demo 120 runs the day 120× faster, --ez saver true opens the screensaver,
      * --es page scene|calendar|places|telegram opens that settings page, --es style and --ez bare compare the scenes. */
     private void testing(Intent intent) {
+        // the activity is exported (HOME), so any app could send these: only a debug build listens
+        if (!BuildConfig.DEBUG) return;
+        try {
+            testExtras(intent);
+        } catch (RuntimeException e) {
+            android.util.Log.w("Home", "testing extras: " + e);
+        }
+    }
+
+    private void testExtras(Intent intent) {
         String phase = intent.getStringExtra("phase");
         if (phase != null) {
             int[] at = {7 * 60 + 10, 13 * 60 + 40, 18 * 60 + 5, 22 * 60 + 30};
-            scene.setForcedMinute(at[Palette.Phase.valueOf(phase.toUpperCase()).ordinal()]);
+            scene.setForcedMinute(at[Palette.Phase.valueOf(phase.toUpperCase(Locale.ROOT)).ordinal()]);
             video.update();
         }
         // --es style painted|pictures switches the bay, --ez bare true hides everything over it (to compare the two)
@@ -615,7 +625,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             card.setId(View.generateViewId());
             card.setFocusable(true);
             card.setClickable(true);
-            long id = m.id;
+            long id = m.id, from = m.from;
             // what moves or sounds on the card; OK plays it first, if it can be played
             Bitmap b = m.photo == null ? null : decode(m.photo, Ui.px(this, 360));
             int mk = m.clip == null ? -1 : "gif".equals(m.kind) ? NoteMedia.GIF : "round".equals(m.kind) ? NoteMedia.ROUND
@@ -625,7 +635,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             card.setTag(R.id.media, media);
             card.setOnClickListener(v -> {
                 if (media != null && media.click()) return;
-                v.animate().alpha(0f).translationX(Ui.px(this, 40)).setDuration(220).withEndAction(() -> tg.dismiss(id)).start();
+                v.animate().alpha(0f).translationX(Ui.px(this, 40)).setDuration(220).withEndAction(() -> tg.dismiss(from, id)).start();
             });
 
             LinearLayout head = new LinearLayout(this);

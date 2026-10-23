@@ -25,6 +25,11 @@ android {
         }
     }
 
+    buildFeatures {
+        // BuildConfig.DEBUG keeps the testing intent extras out of the release build
+        buildConfig true
+    }
+
     lint {
         disable 'ExpiredTargetSdkVersion'
     }

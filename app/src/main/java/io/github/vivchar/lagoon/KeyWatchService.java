@@ -29,7 +29,12 @@ import java.util.regex.Pattern;
 public class KeyWatchService extends Service {
     private static final String TAG = "RemoteKeys";
     private static final long HOLD_MS = 500;
-    private static final Pattern LINE = Pattern.compile("interceptKeyTq keycode=(\\d+) .*policyFlags=([0-9a-fA-F]+)");
+    /**
+     * Any app may write a WindowManager line to the log, so only the system's own count: "-v uid" puts the writer's
+     * uid in the header (logd records it, an app cannot pick it), and 1000 is system_server's.
+     */
+    private static final Pattern LINE = Pattern.compile(
+            "^[VDIWEF]/WindowManager\\(\\s*(?:1000|system):\\s*\\d+\\): interceptKeyTq keycode=(\\d+) .*policyFlags=([0-9a-fA-F]+)\\s*$");
 
     /** Set by SettingsActivity while it waits for a button press; gets the keycode instead of an app launch. */
     interface Learner { void onKey(int code); }
@@ -84,14 +89,14 @@ public class KeyWatchService extends Service {
         while (running) {
             try {
                 // -T 1: follow from the newest line on; that one line is history, so it is skipped.
-                logcat = new ProcessBuilder("logcat", "-T", "1", "-v", "raw", "WindowManager:D", "*:S")
+                logcat = new ProcessBuilder("logcat", "-T", "1", "-v", "brief", "-v", "uid", "WindowManager:D", "*:S")
                         .redirectErrorStream(true).start();
                 BufferedReader in = new BufferedReader(new InputStreamReader(logcat.getInputStream()));
                 in.readLine();
                 String line;
                 while (running && (line = in.readLine()) != null) {
                     Matcher m = LINE.matcher(line);
-                    if (!m.find()) continue;
+                    if (!m.matches()) continue;
                     int code = Integer.parseInt(m.group(1));
                     boolean down = (Long.parseLong(m.group(2), 16) & 1) != 0;
                     main.post(() -> onKey(code, down));

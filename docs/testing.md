@@ -24,7 +24,9 @@ adb -s emulator-5554 shell input keyevent DPAD_DOWN   # UP, LEFT, RIGHT, DPAD_CE
 
 ## Отладочные флаги
 
-Флаги интента `MainActivity` (`testing()`), работают и при повторном запуске:
+Флаги интента `MainActivity` (`testing()`), работают и при повторном запуске.
+Только в debug-сборке (`BuildConfig.DEBUG`): activity экспортирована, release
+флаги игнорирует. Неверное значение пишется в лог `Home` и пропускается:
 
 | Флаг | Что делает |
 |---|---|
