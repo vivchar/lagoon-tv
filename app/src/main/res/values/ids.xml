@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="shelf_all" type="id" />
+    <!-- a note's text colour before the card turned white under the cursor -->
+    <item name="base_color" type="id" />
+    <!-- the NoteMedia of a note card: what OK and Back play or stop -->
+    <item name="media" type="id" />
+</resources>

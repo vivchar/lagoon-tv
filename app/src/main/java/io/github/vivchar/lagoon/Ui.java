@@ -1,0 +1,248 @@
+package io.github.vivchar.lagoon;
+
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+/**
+ * The look shared by every screen (the "Дизайн-система" page of the mockups): Inter, frosted glass for
+ * everything that can be chosen, one white ring for the remote's cursor, white fill for what is selected in a
+ * group and blue for what is switched on. Sizes are in the mockups' 1280×720 units, converted to pixels.
+ */
+final class Ui {
+    static final int INK = 0xFF0B0F14;
+    static final int TEXT = 0xFFFFFFFF;
+    static final int TEXT_DIM = 0xA8FFFFFF;
+    static final int TEXT_FAINT = 0x8CFFFFFF;
+    static final int GLASS = 0x1FFFFFFF;
+    static final int GLASS_FOCUS = 0x2EFFFFFF;
+    static final int GLASS_LINE = 0x24FFFFFF;
+    /** The dock and the notes: darker glass that stays readable over a bright sky. */
+    static final int DARK_GLASS = 0x5C12161C;
+    /** Dialogs and menus. Nearly opaque: without the mockups' blur, anything behind would show through the text. */
+    static final int SURFACE = 0xF01E2228;
+    static final int SCRIM = 0x80040810;
+    static final int ON = 0xFF0A84FF;
+    static final int WARN = 0xFFFFD27A;
+    static final int BADGE = 0xFFFF453A;
+    /** The same growth as a dock tile, so every control answers the cursor alike. */
+    static final float FOCUS_SCALE = FocusRing.TILE_SCALE;
+
+    private static Typeface[] faces;
+
+    private Ui() {
+    }
+
+    /** Design units (the mockups' 1280-wide frame) to pixels. */
+    static int px(Context c, float design) {
+        return Math.round(design * c.getResources().getDisplayMetrics().widthPixels / 1280f);
+    }
+
+    static Typeface font(Context c, int weight) {
+        if (faces == null) faces = new Typeface[10];
+        int i = Math.max(1, Math.min(9, weight / 100));
+        if (faces[i] == null) {
+            faces[i] = new Typeface.Builder(c.getResources().getAssets(), "fonts/inter.ttf")
+                    .setFontVariationSettings("'wght' " + (i * 100)).build();
+        }
+        return faces[i];
+    }
+
+    static TextView text(Context c, String s, float size, int weight, int color) {
+        TextView t = new TextView(c);
+        t.setText(s);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, px(c, size));
+        t.setTypeface(font(c, weight));
+        t.setTextColor(color);
+        t.setIncludeFontPadding(false);
+        return t;
+    }
+
+    /** A section label: small capitals, spaced, half-transparent ("СИСТЕМА"). */
+    static TextView caps(Context c, String s) {
+        TextView t = text(c, s.toUpperCase(java.util.Locale.forLanguageTag("ru")), 13, 600, 0x8CFFFFFF);
+        t.setLetterSpacing(0.15f);
+        return t;
+    }
+
+    static GradientDrawable round(int fill, int line, float radius, Context c) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(px(c, radius));
+        if (line != 0) g.setStroke(Math.max(1, px(c, 1)), line);
+        return g;
+    }
+
+    static GradientDrawable glass(Context c, float radius) {
+        return round(GLASS, GLASS_LINE, radius, c);
+    }
+
+    /**
+     * A control background. The cursor is a 3 px white ring on slightly brighter glass; a control that is
+     * selected in its group is filled white, with the ring around it when the cursor is on it too.
+     */
+    static Drawable control(Context c, float radius) {
+        StateListDrawable s = new StateListDrawable();
+        GradientDrawable chosenFocus = round(Color.WHITE, 0, radius, c);
+        chosenFocus.setStroke(px(c, 3), 0xFFDDE6F0);
+        s.addState(new int[]{android.R.attr.state_selected, android.R.attr.state_focused}, chosenFocus);
+        s.addState(new int[]{android.R.attr.state_selected}, round(Color.WHITE, 0, radius, c));
+        GradientDrawable focus = round(GLASS_FOCUS, 0, radius, c);
+        focus.setStroke(px(c, 3), Color.WHITE);
+        s.addState(new int[]{android.R.attr.state_focused}, focus);
+        s.addState(new int[]{}, glass(c, radius));
+        return s;
+    }
+
+    /** Like {@link #control}, but a switched-on control is blue instead of white. */
+    static Drawable toggle(Context c, float radius, boolean on) {
+        if (!on) return control(c, radius);
+        StateListDrawable s = new StateListDrawable();
+        GradientDrawable focus = round(ON, 0, radius, c);
+        focus.setStroke(px(c, 3), Color.WHITE);
+        s.addState(new int[]{android.R.attr.state_focused}, focus);
+        s.addState(new int[]{}, round(ON, 0, radius, c));
+        return s;
+    }
+
+    /** Text on a control: dark on a white (selected) control, white otherwise. */
+    static ColorStateList ink() {
+        return new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
+                new int[]{INK, TEXT});
+    }
+
+    static ColorStateList inkDim() {
+        return new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
+                new int[]{0xA60B0F14, TEXT_DIM});
+    }
+
+    /** Makes a focusable control: ringed and slightly larger under the cursor, children follow its state. */
+    static void focusable(View v) {
+        v.setFocusable(true);
+        v.setClickable(true);
+        v.setOnFocusChangeListener((view, has) -> {
+            grow(view, has);
+            if (view instanceof ViewGroup) refresh((ViewGroup) view);
+        });
+        if (v instanceof ViewGroup) refresh((ViewGroup) v);
+    }
+
+    /** The cursor's growth, for a control that handles its own focus (a text field grows its whole pill). */
+    static void grow(View view, boolean has) {
+        // a view focused before its first layout (a note card that has just arrived) has no width yet: grown now,
+        // it would take a dock tile's full growth and lose its sides; it grows once it is laid out
+        if (has && view.getWidth() == 0) {
+            view.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                    if (r - l == 0) return;
+                    v.removeOnLayoutChangeListener(this);
+                    grow(v, v.hasFocus());
+                }
+            });
+            return;
+        }
+        // small controls grow like a dock tile; wide ones (a whole row) by at most 10 px a side, or they run off the screen
+        float s = has ? Math.min(FOCUS_SCALE, 1f + 2f * px(view.getContext(), 10) / Math.max(1, view.getWidth())) : 1f;
+        view.animate().scaleX(s).scaleY(s).translationZ(has ? px(view.getContext(), 6) : 0)
+                .setInterpolator(FocusRing.EASE).setDuration(FocusRing.MS).start();
+    }
+
+    private static void refresh(ViewGroup g) {
+        for (int i = 0; i < g.getChildCount(); i++) {
+            View ch = g.getChildAt(i);
+            ch.setDuplicateParentStateEnabled(true);
+            ch.refreshDrawableState();
+            if (ch instanceof ViewGroup) refresh((ViewGroup) ch);
+        }
+    }
+
+    static ImageView icon(Context c, int res, float size) {
+        ImageView iv = new ImageView(c);
+        iv.setImageResource(res);
+        iv.setImageTintList(ink());
+        iv.setDuplicateParentStateEnabled(true);
+        iv.setLayoutParams(new LinearLayout.LayoutParams(px(c, size), px(c, size)));
+        return iv;
+    }
+
+    /** A quick-settings card: icon at the top, name and a quiet line at the bottom. */
+    static LinearLayout tile(Context c, int iconRes, String label, String sub, float w, float h, View.OnClickListener click) {
+        LinearLayout t = new LinearLayout(c);
+        t.setOrientation(LinearLayout.VERTICAL);
+        t.setPadding(px(c, 18), px(c, 18), px(c, 16), px(c, 18));
+        t.setBackground(control(c, 26));
+        if (iconRes != 0) t.addView(icon(c, iconRes, 26));
+        View push = new View(c);
+        t.addView(push, new LinearLayout.LayoutParams(1, 0, 1));
+        TextView l = text(c, label, 17, 600, TEXT);
+        l.setTextColor(ink());
+        l.setDuplicateParentStateEnabled(true);
+        l.setSingleLine(true);
+        l.setEllipsize(TextUtils.TruncateAt.END);
+        t.addView(l);
+        if (sub != null) {
+            TextView s = text(c, sub, 14, 400, TEXT_DIM);
+            s.setTextColor(inkDim());
+            s.setDuplicateParentStateEnabled(true);
+            s.setSingleLine(true);
+            s.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
+            sp.topMargin = px(c, 4);
+            t.addView(s, sp);
+        }
+        focusable(t);
+        t.setOnClickListener(click);
+        t.setLayoutParams(new LinearLayout.LayoutParams(px(c, w), px(c, h)));
+        return t;
+    }
+
+    /**
+     * A round system button (Wi-Fi, VPN, sound…): the circle takes the cursor, the name and a quiet line sit
+     * under it. Switched on, the circle is blue.
+     */
+    static LinearLayout round(Context c, int iconRes, String label, String sub, boolean on, View.OnClickListener click) {
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setClipChildren(false);
+        android.widget.FrameLayout circle = new android.widget.FrameLayout(c);
+        circle.setBackground(toggle(c, 48, on));
+        ImageView iv = new ImageView(c);
+        iv.setImageResource(iconRes);
+        circle.addView(iv, new android.widget.FrameLayout.LayoutParams(px(c, 30), px(c, 30), Gravity.CENTER));
+        focusable(circle);
+        circle.setOnClickListener(click);
+        col.addView(circle, new LinearLayout.LayoutParams(px(c, 96), px(c, 96)));
+        TextView l = text(c, label, 15, 600, TEXT);
+        l.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.topMargin = px(c, 12);
+        col.addView(l, lp);
+        if (sub != null) {
+            TextView s = text(c, sub, 13, 400, TEXT_DIM);
+            s.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
+            sp.topMargin = px(c, 4);
+            col.addView(s, sp);
+        }
+        col.setLayoutParams(new LinearLayout.LayoutParams(px(c, 112), -2));
+        return col;
+    }
+
+    static void shadow(TextView t) {
+        t.setShadowLayer(20, 0, 1, 0x4D000000);
+    }
+}

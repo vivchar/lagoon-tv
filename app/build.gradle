@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.github.vivchar.lagoon'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.vivchar.lagoon'
+        minSdk 26
+        // 30: the stick runs Android 11; no foreground-service types or notification permission to declare.
+        targetSdk 30
+        versionCode 1
+        versionName '0.1'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            // Sideloaded over ADB: signed with the debug key.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    lint {
+        disable 'ExpiredTargetSdkVersion'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
