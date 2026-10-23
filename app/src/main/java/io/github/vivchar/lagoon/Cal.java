@@ -9,8 +9,8 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URL;
@@ -197,7 +197,7 @@ final class Cal {
     }
 
     /** A big shared calendar runs to a few MB; anything far past that is not one. */
-    private static final int MAX_CHARS = 8_000_000;
+    private static final int MAX_BYTES = 8_000_000;
 
     /**
      * Reads an iCal file. The address comes from a Telegram message, so it is held to https on a public host,
@@ -221,17 +221,22 @@ final class Cal {
                     u = new URL(u, to);
                     continue;
                 }
-                if (conn.getContentLengthLong() > MAX_CHARS) throw new Exception("too big");
-                List<String> lines = new ArrayList<>();
-                long total = 0;
-                try (BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                    String l;
-                    while ((l = r.readLine()) != null) {
-                        if ((total += l.length() + 1) > MAX_CHARS) throw new Exception("too big");
-                        // folded lines continue with a space or a tab
-                        if ((l.startsWith(" ") || l.startsWith("\t")) && !lines.isEmpty()) lines.set(lines.size() - 1, lines.get(lines.size() - 1) + l.substring(1));
-                        else lines.add(l);
+                if (conn.getContentLengthLong() > MAX_BYTES) throw new Exception("too big");
+                // counted in bytes before any line is split: one endless line must not slip past the cap
+                ByteArrayOutputStream raw = new ByteArrayOutputStream();
+                try (InputStream in = conn.getInputStream()) {
+                    byte[] b = new byte[16384];
+                    int n;
+                    while ((n = in.read(b)) > 0) {
+                        if (raw.size() + n > MAX_BYTES) throw new Exception("too big");
+                        raw.write(b, 0, n);
                     }
+                }
+                List<String> lines = new ArrayList<>();
+                for (String l : new String(raw.toByteArray(), StandardCharsets.UTF_8).split("\r?\n")) {
+                    // folded lines continue with a space or a tab
+                    if ((l.startsWith(" ") || l.startsWith("\t")) && !lines.isEmpty()) lines.set(lines.size() - 1, lines.get(lines.size() - 1) + l.substring(1));
+                    else lines.add(l);
                 }
                 return lines;
             } finally {
@@ -245,7 +250,17 @@ final class Cal {
         if (a.isLoopbackAddress() || a.isAnyLocalAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress() || a.isMulticastAddress()) return false;
         byte[] b = a.getAddress();
         if (b.length == 4) return !((b[0] & 0xFF) == 100 && (b[1] & 0xC0) == 64) && (b[0] & 0xFF) != 0;
-        return (b[0] & 0xFE) != 0xFC;   // fc00::/7
+        if ((b[0] & 0xFE) == 0xFC) return false;   // fc00::/7
+        // 64:ff9b::/96 is NAT64: the last four bytes are an IPv4 address that the same rules apply to
+        byte[] nat64 = {0, 0x64, (byte) 0xff, (byte) 0x9b, 0, 0, 0, 0, 0, 0, 0, 0};
+        if (java.util.Arrays.equals(java.util.Arrays.copyOf(b, 12), nat64)) {
+            try {
+                return publicAddress(InetAddress.getByAddress(java.util.Arrays.copyOfRange(b, 12, 16)));
+            } catch (Exception e) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The events of an iCal file that happen today, recurring ones included (daily, weekly, monthly, yearly). */
