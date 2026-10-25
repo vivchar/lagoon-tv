@@ -44,6 +44,7 @@
     <string name="wifi_off">无网络</string>
     <string name="state_on">已开启</string>
     <string name="state_off">已关闭</string>
+    <string name="bt_devices">设备</string>
     <string name="sound">声音</string>
     <string name="remote_buttons">遥控器按键</string>
     <string name="tv_settings">电视设置</string>
@@ -66,7 +67,6 @@
     <string name="show_now">立即显示</string>
     <string name="make_saver">设为电视屏保</string>
     <string name="other_album">其他相册</string>
-    <string name="album_howto">在 iPhone 上：照片 → 共享相册 → “邀请” → “公开网站”。把链接发给 Telegram 机器人，无需用遥控器输入。</string>
     <string name="layout">布局</string>
     <string name="layout_one">单张</string>
     <string name="layout_two">并排两张</string>
@@ -106,11 +106,8 @@
     <string name="cal_mode_all">今日全部</string>
     <string name="cal_mode_none">不显示</string>
     <string name="cal_important">“重要”指设有提醒的日程。天气下方最多显示三条，已过去的会消失。</string>
-    <string name="send_link_bot">把链接发给机器人</string>
     <string name="cal_howto_google">Google 日历。应用里没有该链接：在 Chrome 或 Safari 中打开 calendar.google.com，切换到电脑版 → 设置 → 你的日历 → “集成日历” → “iCal 格式的私密地址”。</string>
     <string name="cal_howto_apple">iPhone 日历。“日历” → iCloud 日历旁的 ⓘ → “公共日历” → “共享链接”。</string>
-    <string name="cal_send_bot">复制链接并发给机器人。</string>
-    <string name="cal_send_bot_named">复制链接并发给机器人 @%1$s。</string>
     <string name="cal_default">日历</string>
     <string name="event_untitled">日程</string>
     <string name="updated_at">更新于 %1$s</string>
@@ -287,4 +284,27 @@
     <string name="sample_name_2">马克斯</string>
     <string name="sample_note_1">买面包和牛奶</string>
     <string name="sample_note_2">18:00 前取快递</string>
+    <string name="handoff_title">用手机</string>
+    <string name="handoff_token">用手机相机扫描二维码，在打开的页面中粘贴令牌。手机需连接同一个 Wi-Fi。</string>
+    <string name="handoff_link">用手机相机扫描二维码，在打开的页面中粘贴链接。手机需连接同一个 Wi-Fi。</string>
+    <string name="handoff_open">或在手机浏览器中打开：%1$s</string>
+    <string name="handoff_no_network">电视连上 Wi-Fi 后会显示二维码。</string>
+    <string name="handoff_or_bot">或把链接发给机器人 @%1$s。</string>
+    <string name="web_send">发送到电视</string>
+    <string name="web_done">完成</string>
+    <string name="web_token_title">机器人令牌</string>
+    <string name="web_token_hint">从 @BotFather 的消息中复制令牌，粘贴到这里。</string>
+    <string name="web_album_title">屏保相册</string>
+    <string name="web_album_hint">粘贴 iCloud 共享相册的链接：照片 → 共享相册 → “邀请” → “公开网站”。</string>
+    <string name="web_cal_title">日历</string>
+    <string name="web_cal_hint">粘贴 Google 日历中 iCal 格式的私密地址，或 iPhone 公开日历的链接。</string>
+    <string name="web_token_ok">机器人 @%1$s 已连接，可以关闭此页面。</string>
+    <string name="web_album_ok">相册已连接，照片几分钟内会出现在电视上。</string>
+    <string name="web_cal_ok">日历“%1$s”已连接。</string>
+    <string name="web_bad_token">Telegram 不接受这个令牌。请从 @BotFather 的消息中完整复制，格式如：123456789:AAF…</string>
+    <string name="web_bad_album">这里没有 iCloud 共享相册链接。链接以 https://www.icloud.com/sharedalbum/ 开头</string>
+    <string name="web_bad_cal">无法从此链接读取日历。需要 iCal 文件的链接：https://… 或 webcal://…</string>
+    <string name="web_too_long">内容太长。只粘贴链接或令牌。</string>
+    <string name="web_expired_title">二维码已过期</string>
+    <string name="web_expired">在电视上重新打开此页面，扫描新的二维码。</string>
 </resources>

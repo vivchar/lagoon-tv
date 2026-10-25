@@ -44,6 +44,7 @@
     <string name="wifi_off">ไม่มีเครือข่าย</string>
     <string name="state_on">เปิด</string>
     <string name="state_off">ปิด</string>
+    <string name="bt_devices">อุปกรณ์</string>
     <string name="sound">เสียง</string>
     <string name="remote_buttons">ปุ่มรีโมต</string>
     <string name="tv_settings">ตั้งค่าทีวี</string>
@@ -66,7 +67,6 @@
     <string name="show_now">แสดงตอนนี้</string>
     <string name="make_saver">ตั้งเป็นสกรีนเซฟเวอร์ทีวี</string>
     <string name="other_album">อัลบั้มอื่น</string>
-    <string name="album_howto">บน iPhone: รูปภาพ → อัลบั้มที่แชร์ → “เชิญ” → “เว็บไซต์สาธารณะ” ส่งลิงก์ให้บอท Telegram ไม่ต้องพิมพ์ด้วยรีโมต</string>
     <string name="layout">การจัดวาง</string>
     <string name="layout_one">รูปเดียว</string>
     <string name="layout_two">สองรูปเคียงกัน</string>
@@ -106,11 +106,8 @@
     <string name="cal_mode_all">ทั้งหมดของวันนี้</string>
     <string name="cal_mode_none">ไม่แสดง</string>
     <string name="cal_important">สำคัญ คือกิจกรรมที่มีการแจ้งเตือน แสดงสูงสุดสามรายการใต้สภาพอากาศ รายการที่ผ่านไปแล้วจะหายไป</string>
-    <string name="send_link_bot">ส่งลิงก์ให้บอท</string>
     <string name="cal_howto_google">Google Calendar ในแอปไม่มีลิงก์ ให้เปิด calendar.google.com ใน Chrome หรือ Safari เลือกเวอร์ชันคอมพิวเตอร์ → การตั้งค่า → ปฏิทินของคุณ → “ผสานรวมปฏิทิน” → “ที่อยู่ลับในรูปแบบ iCal”</string>
     <string name="cal_howto_apple">ปฏิทิน iPhone “ปฏิทิน” → ⓘ ที่ปฏิทิน iCloud → “ปฏิทินสาธารณะ” → “แชร์ลิงก์”</string>
-    <string name="cal_send_bot">คัดลอกลิงก์แล้วส่งให้บอท</string>
-    <string name="cal_send_bot_named">คัดลอกลิงก์แล้วส่งให้บอท @%1$s</string>
     <string name="cal_default">ปฏิทิน</string>
     <string name="event_untitled">กิจกรรม</string>
     <string name="updated_at">อัปเดตเมื่อ %1$s</string>
@@ -287,4 +284,27 @@
     <string name="sample_name_2">แม็กซ์</string>
     <string name="sample_note_1">ซื้อขนมปังกับนม</string>
     <string name="sample_note_2">รับพัสดุก่อน 18:00</string>
+    <string name="handoff_title">จากโทรศัพท์</string>
+    <string name="handoff_token">เล็งกล้องโทรศัพท์ไปที่โค้ด แล้ววางโทเค็นในหน้าที่เปิดขึ้น โทรศัพท์ต้องอยู่ใน Wi-Fi เดียวกัน</string>
+    <string name="handoff_link">เล็งกล้องโทรศัพท์ไปที่โค้ด แล้ววางลิงก์ในหน้าที่เปิดขึ้น โทรศัพท์ต้องอยู่ใน Wi-Fi เดียวกัน</string>
+    <string name="handoff_open">หรือเปิดในเบราว์เซอร์ของโทรศัพท์: %1$s</string>
+    <string name="handoff_no_network">โค้ดจะปรากฏเมื่อทีวีเชื่อมต่อ Wi-Fi</string>
+    <string name="handoff_or_bot">หรือส่งลิงก์ให้บอท @%1$s</string>
+    <string name="web_send">ส่งไปที่ทีวี</string>
+    <string name="web_done">เรียบร้อย</string>
+    <string name="web_token_title">โทเค็นบอท</string>
+    <string name="web_token_hint">คัดลอกโทเค็นจากข้อความของ @BotFather แล้ววางที่นี่</string>
+    <string name="web_album_title">อัลบั้มภาพพักหน้าจอ</string>
+    <string name="web_album_hint">วางลิงก์อัลบั้มที่แชร์ใน iCloud: รูปภาพ → อัลบั้มที่แชร์ → “เชิญ” → “เว็บไซต์สาธารณะ”</string>
+    <string name="web_cal_title">ปฏิทิน</string>
+    <string name="web_cal_hint">วางที่อยู่ลับในรูปแบบ iCal จาก Google ปฏิทิน หรือลิงก์ปฏิทินสาธารณะของ iPhone</string>
+    <string name="web_token_ok">เชื่อมต่อบอท @%1$s แล้ว ปิดหน้านี้ได้เลย</string>
+    <string name="web_album_ok">เชื่อมต่ออัลบั้มแล้ว รูปจะขึ้นบนทีวีภายในไม่กี่นาที</string>
+    <string name="web_cal_ok">เชื่อมต่อปฏิทิน “%1$s” แล้ว</string>
+    <string name="web_bad_token">Telegram ไม่รับโทเค็นนี้ คัดลอกจากข้อความของ @BotFather ให้ครบ หน้าตาแบบนี้: 123456789:AAF…</string>
+    <string name="web_bad_album">ไม่มีลิงก์อัลบั้มที่แชร์ใน iCloud ลิงก์จะขึ้นต้นด้วย https://www.icloud.com/sharedalbum/</string>
+    <string name="web_bad_cal">อ่านปฏิทินจากลิงก์นี้ไม่ได้ ต้องเป็นลิงก์ไฟล์ iCal: https://… หรือ webcal://…</string>
+    <string name="web_too_long">ข้อความยาวเกินไป วางเฉพาะลิงก์หรือโทเค็น</string>
+    <string name="web_expired_title">โค้ดหมดอายุ</string>
+    <string name="web_expired">เปิดหน้านี้บนทีวีอีกครั้ง แล้วสแกนโค้ดใหม่</string>
 </resources>

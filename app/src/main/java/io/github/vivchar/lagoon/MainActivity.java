@@ -1,7 +1,6 @@
 package io.github.vivchar.lagoon;
 
 import android.app.Activity;
-import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -248,6 +247,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         video.setRunning(false);
         handler.removeCallbacks(tick);
         releaseMedia();
+        Handoff.stop();
         super.onPause();
     }
 
@@ -1558,6 +1558,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 closing = overlay;
             }
         }
+        // the keyboard of a field on the page before stays up otherwise
+        View typing = getCurrentFocus();
+        if (typing instanceof EditText && !tag.equals(old == null ? null : old.getTag()))
+            getSystemService(android.view.inputmethod.InputMethodManager.class).hideSoftInputFromWindow(typing.getWindowToken(), 0);
         overlay = v;
         dialog = null;
         v.setTag(tag);
@@ -1620,6 +1624,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             if (closing != old) return;
             if (overlay != null) return; // show() took over and removes it when the new screen is in
             closing = null;
+            Handoff.stop();
             if (old instanceof ViewGroup) ((ViewGroup) old).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
             home.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
             View f = getCurrentFocus();
@@ -2017,8 +2022,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 return Ui.round(this, R.drawable.ic_wifi, "Wi-Fi", getString(wifi ? R.string.wifi_on : R.string.wifi_off), wifi, v -> settings(Settings.ACTION_WIFI_SETTINGS));
             }
             case "bluetooth": {
-                boolean bt = bluetooth();
-                return Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", getString(bt ? R.string.state_on : R.string.state_off), bt, v -> Actions.bluetooth(this));
+                // opens the system list of devices: "on" read as a switch that would turn it off
+                return Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", getString(R.string.bt_devices), false, v -> Actions.bluetooth(this));
             }
             case "vpn": {
                 String pkg = vpnApp();
@@ -2209,15 +2214,6 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         }
     }
 
-    private boolean bluetooth() {
-        try {
-            BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
-            return a != null && a.isEnabled();
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     /** A count in the tile's top-right corner, on the icon's line: someone waits to be let in. */
     private void badge(LinearLayout tile, int n) {
         View icon = tile.getChildAt(0);
@@ -2382,19 +2378,29 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2);
         al.topMargin = Ui.px(this, 18);
         album.addView(act, al);
-        top.addView(album, new LinearLayout.LayoutParams(Ui.px(this, 620), Ui.px(this, 168)));
+        top.addView(album, new LinearLayout.LayoutParams(Ui.px(this, 620), Ui.px(this, 196)));
 
-        LinearLayout how = new LinearLayout(this);
-        how.setOrientation(LinearLayout.VERTICAL);
-        how.setPadding(Ui.px(this, 24), Ui.px(this, 20), Ui.px(this, 24), Ui.px(this, 20));
+        // another album: its link is pasted on the phone through the code (the steps are on that page), or sent to the bot
+        LinearLayout how = row();
+        how.setGravity(Gravity.CENTER_VERTICAL);
+        how.setPadding(Ui.px(this, 24), Ui.px(this, 20), Ui.px(this, 20), Ui.px(this, 20));
         how.setBackground(Ui.glass(this, 26));
-        how.addView(Ui.text(this, getString(R.string.other_album), 15, 600, Color.WHITE));
-        TextView ht2 = label(getString(R.string.album_howto));
+        LinearLayout howText = new LinearLayout(this);
+        howText.setOrientation(LinearLayout.VERTICAL);
+        howText.addView(Ui.text(this, getString(R.string.other_album), 15, 600, Color.WHITE));
+        String link = phoneLink(Handoff.ALBUM);
+        TextView ht2 = label(link == null ? getString(R.string.handoff_no_network) + orBot() : getString(R.string.handoff_link) + orBot());
         ht2.setLineSpacing(0, 1.35f);
         LinearLayout.LayoutParams h2l = new LinearLayout.LayoutParams(-2, -2);
         h2l.topMargin = Ui.px(this, 8);
-        how.addView(ht2, h2l);
-        LinearLayout.LayoutParams howl = new LinearLayout.LayoutParams(0, Ui.px(this, 168), 1);
+        howText.addView(ht2, h2l);
+        how.addView(howText, new LinearLayout.LayoutParams(0, -2, 1));
+        if (link != null) {
+            LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(Ui.px(this, 150), Ui.px(this, 150));
+            ql.leftMargin = Ui.px(this, 20);
+            how.addView(qrImage(link), ql);
+        }
+        LinearLayout.LayoutParams howl = new LinearLayout.LayoutParams(0, Ui.px(this, 196), 1);
         howl.leftMargin = Ui.px(this, 24);
         top.addView(how, howl);
 
@@ -2702,10 +2708,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         il.topMargin = Ui.px(this, 12);
         s.addView(imp, il);
 
-        String bot = tg.botName();
-        qrBlock(h, bot.isEmpty() ? null : "https://t.me/" + bot, getString(R.string.send_link_bot),
-                getString(R.string.cal_howto_google) + "\n\n" + getString(R.string.cal_howto_apple) + "\n\n"
-                        + (bot.isEmpty() ? getString(R.string.cal_send_bot) : getString(R.string.cal_send_bot_named, bot)));
+        // the link is pasted on the phone, through the code; sending it to the bot works too
+        String link = phoneLink(Handoff.CALENDAR);
+        // where to find the link in Google and Apple calendars is told on the phone, where it is copied
+        qrBlock(h, link, getString(R.string.handoff_title), phoneText(getString(R.string.handoff_link) + orBot(), link));
         show(h, "calendar");
         if (first != null) first.requestFocus();
         else if (mode.findViewWithTag("on") != null) mode.findViewWithTag("on").requestFocus();
@@ -2719,17 +2725,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout b = new LinearLayout(this);
         b.setOrientation(LinearLayout.VERTICAL);
         b.setGravity(Gravity.END);
-        if (link != null && !link.isEmpty()) {
-            FrameLayout q = new FrameLayout(this);
-            q.setBackground(Ui.round(Color.WHITE, 0, 20, this));
-            ImageView iv = new ImageView(this);
-            Bitmap bm = Qr.bitmap(link, 8);
-            iv.setImageBitmap(bm);
-            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            q.addView(iv, new FrameLayout.LayoutParams(-1, -1));
-            q.setPadding(Ui.px(this, 6), Ui.px(this, 6), Ui.px(this, 6), Ui.px(this, 6));
-            b.addView(q, new LinearLayout.LayoutParams(Ui.px(this, 180), Ui.px(this, 180)));
-        }
+        if (link != null && !link.isEmpty()) b.addView(qrImage(link), new LinearLayout.LayoutParams(Ui.px(this, 180), Ui.px(this, 180)));
         TextView t = Ui.text(this, title, 17, 600, Color.WHITE);
         t.setGravity(Gravity.END);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
@@ -2745,6 +2741,45 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         fl.rightMargin = Ui.px(this, 72);
         fl.topMargin = Ui.px(this, 56 + 32 + 44);
         host.addView(b, fl);
+    }
+
+    /** A QR code on its white card, sized by the caller. */
+    private View qrImage(String link) {
+        FrameLayout q = new FrameLayout(this);
+        q.setBackground(Ui.round(Color.WHITE, 0, 20, this));
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(Qr.bitmap(link, 8));
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        q.addView(iv, new FrameLayout.LayoutParams(-1, -1));
+        q.setPadding(Ui.px(this, 6), Ui.px(this, 6), Ui.px(this, 6), Ui.px(this, 6));
+        return q;
+    }
+
+    /** The link of the phone form for {@code kind} ({@link Handoff}), or null while the TV is on no local network. */
+    private String phoneLink(String kind) {
+        return Handoff.link(this, kind, this::handedOver);
+    }
+
+    /** {@code text} under a phone code, with the address to type when the camera can't read it. */
+    private String phoneText(String text, String link) {
+        if (link == null) return getString(R.string.handoff_no_network);
+        return text + "\n\n" + getString(R.string.handoff_open, link.replaceFirst("^http://", ""));
+    }
+
+    /** " Or send the link to the bot @name." once the bot is known. */
+    private String orBot() {
+        String bot = tg.botName();
+        return bot.isEmpty() ? "" : " " + getString(R.string.handoff_or_bot, bot);
+    }
+
+    /** What was pasted on the phone is set up; the page it was sent from shows it at once. */
+    private void handedOver(String kind, String value) {
+        if (Handoff.TOKEN.equals(kind)) tg.setToken(value);
+        if (Handoff.CALENDAR.equals(kind)) renderToday();
+        Object page = overlay == null ? null : overlay.getTag();
+        if ("telegram".equals(page) && Handoff.TOKEN.equals(kind)) openTelegram();
+        else if ("saver".equals(page) && Handoff.ALBUM.equals(kind)) openSaver();
+        else if ("calendar".equals(page) && Handoff.CALENDAR.equals(kind)) openCalendar();
     }
 
     // ---- weather
@@ -3408,6 +3443,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             }
             section(s, getString(R.string.bot_token));
             View field = tokenRow(s);
+            String link = phoneLink(Handoff.TOKEN);
+            qrBlock(h, link, getString(R.string.handoff_title), phoneText(getString(R.string.handoff_token), link));
             show(h, "telegram");
             field.requestFocus();
             return;

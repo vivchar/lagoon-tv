@@ -7,8 +7,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Quick settings show whether Wi-Fi and the VPN are on. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- ...and whether Bluetooth is on. -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
     <!-- "Свет" and "Ночь": a dark layer over the screen; the app-op is granted over ADB. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Remote keys: Xiaomi firmware starts Netflix and Prime Video from their buttons before any app sees

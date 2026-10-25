@@ -44,6 +44,7 @@
     <string name="wifi_off">no network</string>
     <string name="state_on">on</string>
     <string name="state_off">off</string>
+    <string name="bt_devices">devices</string>
     <string name="sound">Sound</string>
     <string name="remote_buttons">Remote buttons</string>
     <string name="tv_settings">TV settings</string>
@@ -66,7 +67,6 @@
     <string name="show_now">Show now</string>
     <string name="make_saver">Set as TV screensaver</string>
     <string name="other_album">Another album</string>
-    <string name="album_howto">On iPhone: Photos → shared album → “Invite” → “Public Website”. Send the link to the Telegram bot — nothing to type with the remote.</string>
     <string name="layout">Layout</string>
     <string name="layout_one">One photo</string>
     <string name="layout_two">Two side by side</string>
@@ -106,11 +106,8 @@
     <string name="cal_mode_all">All for today</string>
     <string name="cal_mode_none">Don\'t show</string>
     <string name="cal_important">Important ones are events with a reminder. Up to three under the weather; past ones disappear.</string>
-    <string name="send_link_bot">Send the link to the bot</string>
     <string name="cal_howto_google">Google Calendar. The app has no link: open calendar.google.com in Chrome or Safari, switch to the desktop version → Settings → your calendar → “Integrate calendar” → “Secret address in iCal format”.</string>
     <string name="cal_howto_apple">iPhone Calendar. “Calendars” → ⓘ next to the iCloud calendar → “Public Calendar” → “Share Link”.</string>
-    <string name="cal_send_bot">Copy the link and send it to the bot.</string>
-    <string name="cal_send_bot_named">Copy the link and send it to the bot @%1$s.</string>
     <string name="cal_default">Calendar</string>
     <string name="event_untitled">Event</string>
     <string name="updated_at">updated at %1$s</string>
@@ -293,4 +290,27 @@
     <string name="sample_name_2">Max</string>
     <string name="sample_note_1">Buy bread and milk</string>
     <string name="sample_note_2">Pick up the parcel by 6 pm</string>
+    <string name="handoff_title">From your phone</string>
+    <string name="handoff_token">Point your phone camera at the code and paste the token on the page that opens. The phone must be on the same Wi-Fi.</string>
+    <string name="handoff_link">Point your phone camera at the code and paste the link on the page that opens. The phone must be on the same Wi-Fi.</string>
+    <string name="handoff_open">Or open in the phone browser: %1$s</string>
+    <string name="handoff_no_network">The code appears once the TV is on Wi-Fi.</string>
+    <string name="handoff_or_bot">Or send the link to the bot @%1$s.</string>
+    <string name="web_send">Send to TV</string>
+    <string name="web_done">Done</string>
+    <string name="web_token_title">Bot token</string>
+    <string name="web_token_hint">Copy the token from the @BotFather message and paste it here.</string>
+    <string name="web_album_title">Screensaver album</string>
+    <string name="web_album_hint">Paste the link to an iCloud shared album: Photos → shared album → “Invite” → “Public Website”.</string>
+    <string name="web_cal_title">Calendar</string>
+    <string name="web_cal_hint">Paste the secret address in iCal format from Google Calendar, or the link to a public iPhone calendar.</string>
+    <string name="web_token_ok">Bot @%1$s is connected. You can close this page.</string>
+    <string name="web_album_ok">Album connected. Photos will appear on the TV in the next few minutes.</string>
+    <string name="web_cal_ok">Calendar “%1$s” connected.</string>
+    <string name="web_bad_token">Telegram did not accept this token. Copy all of it from the @BotFather message; it looks like 123456789:AAF…</string>
+    <string name="web_bad_album">There is no iCloud shared album link here. It starts with https://www.icloud.com/sharedalbum/</string>
+    <string name="web_bad_cal">Could not read a calendar at this link. It must be a link to an iCal file: https://… or webcal://…</string>
+    <string name="web_too_long">The text is too long. Paste only the link or the token.</string>
+    <string name="web_expired_title">The code has expired</string>
+    <string name="web_expired">Open this page on the TV again and scan the new code.</string>
 </resources>

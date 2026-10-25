@@ -44,6 +44,7 @@
     <string name="wifi_off">sin red</string>
     <string name="state_on">activado</string>
     <string name="state_off">desactivado</string>
+    <string name="bt_devices">dispositivos</string>
     <string name="sound">Sonido</string>
     <string name="remote_buttons">Botones del mando</string>
     <string name="tv_settings">Ajustes del TV</string>
@@ -66,7 +67,6 @@
     <string name="show_now">Mostrar ahora</string>
     <string name="make_saver">Usar como salvapantallas</string>
     <string name="other_album">Otro álbum</string>
-    <string name="album_howto">En el iPhone: Fotos → álbum compartido → «Invitar» → «Sitio web público». Envía el enlace al bot de Telegram: no hay que escribir nada con el mando.</string>
     <string name="layout">Disposición</string>
     <string name="layout_one">Una foto</string>
     <string name="layout_two">Dos juntas</string>
@@ -106,11 +106,8 @@
     <string name="cal_mode_all">Todos de hoy</string>
     <string name="cal_mode_none">No mostrar</string>
     <string name="cal_important">Importantes son los eventos con recordatorio. Hasta tres bajo el tiempo; los pasados desaparecen.</string>
-    <string name="send_link_bot">Envía el enlace al bot</string>
     <string name="cal_howto_google">Google Calendar. La app no tiene el enlace: abre calendar.google.com en Chrome o Safari, activa la versión de escritorio → Configuración → tu calendario → «Integrar calendario» → «Dirección secreta en formato iCal».</string>
     <string name="cal_howto_apple">Calendario del iPhone. «Calendarios» → ⓘ junto al calendario de iCloud → «Calendario público» → «Compartir enlace».</string>
-    <string name="cal_send_bot">Copia el enlace y envíaselo al bot.</string>
-    <string name="cal_send_bot_named">Copia el enlace y envíaselo al bot @%1$s.</string>
     <string name="cal_default">Calendario</string>
     <string name="event_untitled">Evento</string>
     <string name="updated_at">actualizado a las %1$s</string>
@@ -293,4 +290,27 @@
     <string name="sample_name_2">Max</string>
     <string name="sample_note_1">Comprar pan y leche</string>
     <string name="sample_note_2">Recoger el paquete antes de las 18:00</string>
+    <string name="handoff_title">Desde el móvil</string>
+    <string name="handoff_token">Apunta la cámara del móvil al código y pega el token en la página que se abre. El móvil debe estar en la misma red Wi-Fi.</string>
+    <string name="handoff_link">Apunta la cámara del móvil al código y pega el enlace en la página que se abre. El móvil debe estar en la misma red Wi-Fi.</string>
+    <string name="handoff_open">O ábrelo en el navegador del móvil: %1$s</string>
+    <string name="handoff_no_network">El código aparecerá cuando la TV esté conectada al Wi-Fi.</string>
+    <string name="handoff_or_bot">O envía el enlace al bot @%1$s.</string>
+    <string name="web_send">Enviar a la TV</string>
+    <string name="web_done">Listo</string>
+    <string name="web_token_title">Token del bot</string>
+    <string name="web_token_hint">Copia el token del mensaje de @BotFather y pégalo aquí.</string>
+    <string name="web_album_title">Álbum del salvapantallas</string>
+    <string name="web_album_hint">Pega el enlace a un álbum compartido de iCloud: Fotos → álbum compartido → «Invitar» → «Sitio web público».</string>
+    <string name="web_cal_title">Calendario</string>
+    <string name="web_cal_hint">Pega la dirección secreta en formato iCal de Google Calendar o el enlace a un calendario público del iPhone.</string>
+    <string name="web_token_ok">El bot @%1$s está conectado. Ya puedes cerrar esta página.</string>
+    <string name="web_album_ok">Álbum conectado. Las fotos aparecerán en la TV en unos minutos.</string>
+    <string name="web_cal_ok">Calendario «%1$s» conectado.</string>
+    <string name="web_bad_token">Telegram no aceptó este token. Cópialo entero del mensaje de @BotFather; tiene este aspecto: 123456789:AAF…</string>
+    <string name="web_bad_album">Aquí no hay un enlace a un álbum compartido de iCloud. Empieza por https://www.icloud.com/sharedalbum/</string>
+    <string name="web_bad_cal">No se pudo leer un calendario en este enlace. Hace falta un enlace a un archivo iCal: https://… o webcal://…</string>
+    <string name="web_too_long">El texto es demasiado largo. Pega solo el enlace o el token.</string>
+    <string name="web_expired_title">El código ha caducado</string>
+    <string name="web_expired">Vuelve a abrir esta página en la TV y escanea el código nuevo.</string>
 </resources>

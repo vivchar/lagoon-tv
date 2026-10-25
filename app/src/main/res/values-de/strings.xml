@@ -44,6 +44,7 @@
     <string name="wifi_off">kein Netz</string>
     <string name="state_on">an</string>
     <string name="state_off">aus</string>
+    <string name="bt_devices">Geräte</string>
     <string name="sound">Ton</string>
     <string name="remote_buttons">Fernbedienung</string>
     <string name="tv_settings">TV-Einstellungen</string>
@@ -66,7 +67,6 @@
     <string name="show_now">Jetzt anzeigen</string>
     <string name="make_saver">Als Bildschirmschoner nutzen</string>
     <string name="other_album">Anderes Album</string>
-    <string name="album_howto">Auf dem iPhone: Fotos → geteiltes Album → „Einladen“ → „Öffentliche Website“. Sende den Link an den Telegram-Bot, mit der Fernbedienung muss nichts getippt werden.</string>
     <string name="layout">Anordnung</string>
     <string name="layout_one">Ein Foto</string>
     <string name="layout_two">Zwei nebeneinander</string>
@@ -106,11 +106,8 @@
     <string name="cal_mode_all">Alle von heute</string>
     <string name="cal_mode_none">Ausblenden</string>
     <string name="cal_important">Wichtig sind Termine mit Erinnerung. Bis zu drei unter dem Wetter, vergangene verschwinden.</string>
-    <string name="send_link_bot">Sende den Link an den Bot</string>
     <string name="cal_howto_google">Google Kalender. In der App gibt es den Link nicht: Öffne calendar.google.com in Chrome oder Safari, schalte auf die Desktop-Version → Einstellungen → dein Kalender → „Kalender integrieren“ → „Geheime Adresse im iCal-Format“.</string>
     <string name="cal_howto_apple">iPhone-Kalender. „Kalender“ → ⓘ beim iCloud-Kalender → „Öffentlicher Kalender“ → „Link teilen“.</string>
-    <string name="cal_send_bot">Kopiere den Link und schicke ihn an den Bot.</string>
-    <string name="cal_send_bot_named">Kopiere den Link und schicke ihn an den Bot @%1$s.</string>
     <string name="cal_default">Kalender</string>
     <string name="event_untitled">Termin</string>
     <string name="updated_at">aktualisiert um %1$s</string>
@@ -293,4 +290,27 @@
     <string name="sample_name_2">Max</string>
     <string name="sample_note_1">Brot und Milch kaufen</string>
     <string name="sample_note_2">Paket bis 18 Uhr abholen</string>
+    <string name="handoff_title">Vom Handy</string>
+    <string name="handoff_token">Richte die Handykamera auf den Code und füge den Token auf der geöffneten Seite ein. Das Handy muss im selben WLAN sein.</string>
+    <string name="handoff_link">Richte die Handykamera auf den Code und füge den Link auf der geöffneten Seite ein. Das Handy muss im selben WLAN sein.</string>
+    <string name="handoff_open">Oder im Browser des Handys öffnen: %1$s</string>
+    <string name="handoff_no_network">Der Code erscheint, sobald der Fernseher im WLAN ist.</string>
+    <string name="handoff_or_bot">Oder sende den Link an den Bot @%1$s.</string>
+    <string name="web_send">An den Fernseher senden</string>
+    <string name="web_done">Fertig</string>
+    <string name="web_token_title">Bot-Token</string>
+    <string name="web_token_hint">Kopiere den Token aus der Nachricht von @BotFather und füge ihn hier ein.</string>
+    <string name="web_album_title">Album für den Bildschirmschoner</string>
+    <string name="web_album_hint">Füge den Link zu einem geteilten iCloud-Album ein: Fotos → geteiltes Album → „Einladen“ → „Öffentliche Website“.</string>
+    <string name="web_cal_title">Kalender</string>
+    <string name="web_cal_hint">Füge die geheime Adresse im iCal-Format aus Google Kalender oder den Link zu einem öffentlichen iPhone-Kalender ein.</string>
+    <string name="web_token_ok">Bot @%1$s ist verbunden. Die Seite kann geschlossen werden.</string>
+    <string name="web_album_ok">Album verbunden. Die Fotos erscheinen in den nächsten Minuten auf dem Fernseher.</string>
+    <string name="web_cal_ok">Kalender „%1$s“ verbunden.</string>
+    <string name="web_bad_token">Telegram hat diesen Token nicht angenommen. Kopiere ihn vollständig aus der Nachricht von @BotFather, er sieht so aus: 123456789:AAF…</string>
+    <string name="web_bad_album">Hier ist kein Link zu einem geteilten iCloud-Album. Er beginnt mit https://www.icloud.com/sharedalbum/</string>
+    <string name="web_bad_cal">Unter diesem Link ließ sich kein Kalender lesen. Nötig ist ein Link zu einer iCal-Datei: https://… oder webcal://…</string>
+    <string name="web_too_long">Der Text ist zu lang. Füge nur den Link oder den Token ein.</string>
+    <string name="web_expired_title">Der Code ist abgelaufen</string>
+    <string name="web_expired">Öffne diese Seite auf dem Fernseher noch einmal und scanne den neuen Code.</string>
 </resources>

@@ -87,3 +87,8 @@ adb logcat -s LagoonScene Home Weather Telegram Cal Saver NoteMedia RemoteKeys
 - Кнопки Netflix и Prime Video — только на стике.
 - Пробуждение после таймера сна — только на стике: эмулятор не пишет
   нажатия в logcat, и `KeyWatchService` их не видит.
+- «С телефона» на эмуляторе: телефон до него не достучится, поэтому
+  `adb -s emulator-5554 forward tcp:8090 tcp:8080` и открыть с Mac адрес,
+  что написан под кодом, заменив `10.0.2.15:8080` на `127.0.0.1:8090`
+  (код виден в `uiautomator dump`). Ссылка на альбом и календарь меняет
+  префсы эмулятора — сохрани `saver.xml` и `calendar.xml` до проверки.

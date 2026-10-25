@@ -46,6 +46,7 @@
     <string name="wifi_off">нет сети</string>
     <string name="state_on">включён</string>
     <string name="state_off">выключен</string>
+    <string name="bt_devices">устройства</string>
     <string name="sound">Звук</string>
     <string name="remote_buttons">Кнопки пульта</string>
     <string name="tv_settings">Настройки ТВ</string>
@@ -68,7 +69,6 @@
     <string name="show_now">Показать сейчас</string>
     <string name="make_saver">Сделать заставкой ТВ</string>
     <string name="other_album">Другой альбом</string>
-    <string name="album_howto">Фото на iPhone → общий альбом → «Пригласить» → «Общедоступный веб-сайт». Отправьте ссылку боту в Telegram — пультом ничего набирать не нужно.</string>
     <string name="layout">Раскладка</string>
     <string name="layout_one">Одно фото</string>
     <string name="layout_two">Два рядом</string>
@@ -108,11 +108,8 @@
     <string name="cal_mode_all">Все на сегодня</string>
     <string name="cal_mode_none">Не показывать</string>
     <string name="cal_important">Важные — события с напоминанием. До трёх под погодой, прошедшие исчезают.</string>
-    <string name="send_link_bot">Отправьте ссылку боту</string>
     <string name="cal_howto_google">Google Календарь. В приложении ссылки нет: откройте calendar.google.com в Chrome или Safari, включите версию для ПК → Настройки → ваш календарь → «Интеграция календаря» → «Секретный адрес в формате iCal».</string>
     <string name="cal_howto_apple">Календарь iPhone. «Календари» → ⓘ у календаря iCloud → «Общедоступный календарь» → «Поделиться ссылкой».</string>
-    <string name="cal_send_bot">Скопируйте ссылку и пришлите боту.</string>
-    <string name="cal_send_bot_named">Скопируйте ссылку и пришлите боту @%1$s.</string>
     <string name="cal_default">Календарь</string>
     <string name="event_untitled">Событие</string>
     <string name="updated_at">обновлено в %1$s</string>
@@ -307,4 +304,27 @@
     <string name="sample_name_2">Макс</string>
     <string name="sample_note_1">Купить хлеб и молоко</string>
     <string name="sample_note_2">Забрать посылку до 18:00</string>
+    <string name="handoff_title">С телефона</string>
+    <string name="handoff_token">Наведите камеру телефона на код и вставьте токен на открывшейся странице. Телефон должен быть в той же сети Wi-Fi.</string>
+    <string name="handoff_link">Наведите камеру телефона на код и вставьте ссылку на открывшейся странице. Телефон должен быть в той же сети Wi-Fi.</string>
+    <string name="handoff_open">Или откройте в браузере телефона: %1$s</string>
+    <string name="handoff_no_network">Код появится, когда телевизор подключится к Wi-Fi.</string>
+    <string name="handoff_or_bot">Или пришлите ссылку боту @%1$s.</string>
+    <string name="web_send">Отправить на телевизор</string>
+    <string name="web_done">Готово</string>
+    <string name="web_token_title">Токен бота</string>
+    <string name="web_token_hint">Скопируйте токен из сообщения @BotFather и вставьте сюда.</string>
+    <string name="web_album_title">Альбом для заставки</string>
+    <string name="web_album_hint">Вставьте ссылку на общий альбом iCloud: Фото → общий альбом → «Пригласить» → «Общедоступный веб-сайт».</string>
+    <string name="web_cal_title">Календарь</string>
+    <string name="web_cal_hint">Вставьте секретный адрес в формате iCal из Google Календаря или ссылку на общедоступный календарь iPhone.</string>
+    <string name="web_token_ok">Бот @%1$s подключён. Страницу можно закрыть.</string>
+    <string name="web_album_ok">Альбом подключён. Фото появятся на телевизоре в ближайшие минуты.</string>
+    <string name="web_cal_ok">Календарь «%1$s» подключён.</string>
+    <string name="web_bad_token">Telegram не принял этот токен. Скопируйте его из сообщения @BotFather целиком, он выглядит так: 123456789:AAF…</string>
+    <string name="web_bad_album">Здесь нет ссылки на общий альбом iCloud. Она начинается с https://www.icloud.com/sharedalbum/</string>
+    <string name="web_bad_cal">Не получилось прочитать календарь по этой ссылке. Нужна ссылка на файл iCal: https://… или webcal://…</string>
+    <string name="web_too_long">Слишком длинный текст. Вставьте только ссылку или токен.</string>
+    <string name="web_expired_title">Код устарел</string>
+    <string name="web_expired">Откройте эту страницу на телевизоре ещё раз и отсканируйте новый код.</string>
 </resources>
