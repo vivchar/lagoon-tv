@@ -1,0 +1,21 @@
+name: lint
+
+on:
+  workflow_dispatch:
+
+jobs:
+  markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: |
+            **/*.md
+            !references/**/_*.md
+      - name: link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --exclude-path node_modules --verbose './**/*.md'
+          fail: false

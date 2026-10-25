@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+build/
+.tool-versions

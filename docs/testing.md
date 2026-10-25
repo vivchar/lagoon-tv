@@ -31,7 +31,7 @@ adb -s emulator-5554 shell input keyevent DPAD_DOWN   # UP, LEFT, RIGHT, DPAD_CE
 | Флаг | Что делает |
 |---|---|
 | `--es phase morning\|day\|sunset\|night` | Закрепляет время сцены: 7:10, 13:40, 18:05, 22:30 |
-| `--es style painted\|pictures\|video` | Стиль сцены |
+| `--ez animated false` | Неподвижные картинки вместо видео |
 | `--ez bare true` | Прячет интерфейс, остаётся только сцена |
 | `--ef demo 120` | Сутки в 120 раз быстрее, с 05:00 |
 | `--ez saver true` | Открывает заставку |

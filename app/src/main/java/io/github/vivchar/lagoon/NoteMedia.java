@@ -55,7 +55,7 @@ final class NoteMedia {
             pic.addView(poster, new FrameLayout.LayoutParams(-1, -1));
             if (kind == VIDEO) {
                 // a video stands still until OK: say what it is in the corner
-                android.widget.TextView tag = Ui.text(c, "Видео", 12, 600, 0xFFFFFFFF);
+                android.widget.TextView tag = Ui.text(c, "Видео", 14, 600, 0xFFFFFFFF);
                 tag.setPadding(Ui.px(c, 8), Ui.px(c, 3), Ui.px(c, 8), Ui.px(c, 3));
                 tag.setBackground(Ui.round(0x99000000, 0, 8, c));
                 FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.START | Gravity.BOTTOM);

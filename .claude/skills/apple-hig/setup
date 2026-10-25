@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# apple-hig post-clone setup.
+# Idempotent. Does NOT edit your ~/.claude/CLAUDE.md by default.
+# Pass --inject-claudemd to append an import line to your global CLAUDE.md.
+
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INJECT=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --inject-claudemd) INJECT=1 ;;
+    -h|--help)
+      cat <<USAGE
+apple-hig setup
+
+Usage:
+  ./setup                     # install (no CLAUDE.md changes)
+  ./setup --inject-claudemd   # also append an import line to ~/.claude/CLAUDE.md
+  ./setup -h | --help
+
+Uninstall:
+  $SKILL_DIR/bin/apple-hig-uninstall
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown flag: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
+
+echo "==> apple-hig setup"
+echo "    location: $SKILL_DIR"
+
+# 1. Make bin scripts executable.
+chmod +x "$SKILL_DIR/bin/apple-hig-uninstall"
+
+# 2. Sanity-check SKILL.md frontmatter.
+if ! head -n 1 "$SKILL_DIR/SKILL.md" | grep -q '^---$'; then
+  echo "    !! SKILL.md frontmatter missing leading '---'" >&2
+  exit 1
+fi
+if ! grep -q '^name: apple-hig$' "$SKILL_DIR/SKILL.md"; then
+  echo "    !! SKILL.md missing 'name: apple-hig'" >&2
+  exit 1
+fi
+echo "    SKILL.md frontmatter OK"
+
+# 3. Optional: inject an import into ~/.claude/CLAUDE.md.
+if [ "$INJECT" = "1" ]; then
+  CLAUDEMD="$HOME/.claude/CLAUDE.md"
+  IMPORT_LINE="@$SKILL_DIR/SKILL.md"
+  if [ -f "$CLAUDEMD" ] && grep -qF "$IMPORT_LINE" "$CLAUDEMD"; then
+    echo "    CLAUDE.md already imports this skill; skipping"
+  else
+    mkdir -p "$(dirname "$CLAUDEMD")"
+    {
+      echo ""
+      echo "# apple-hig skill (auto-added by ./setup --inject-claudemd)"
+      echo "$IMPORT_LINE"
+    } >> "$CLAUDEMD"
+    echo "    appended import to $CLAUDEMD"
+  fi
+fi
+
+echo ""
+echo "    Installed."
+echo "    Start a new Claude Code session and ask about any iOS / iPadOS /"
+echo "    macOS / watchOS / tvOS / visionOS UI. The skill will auto-trigger."
+echo ""
+echo "    Uninstall: $SKILL_DIR/bin/apple-hig-uninstall"

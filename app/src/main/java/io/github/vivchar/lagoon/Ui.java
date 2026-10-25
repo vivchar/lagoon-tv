@@ -2,7 +2,13 @@ package io.github.vivchar.lagoon;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -24,15 +30,19 @@ import android.widget.TextView;
 final class Ui {
     static final int INK = 0xFF0B0F14;
     static final int TEXT = 0xFFFFFFFF;
-    static final int TEXT_DIM = 0xA8FFFFFF;
-    static final int TEXT_FAINT = 0x8CFFFFFF;
+    static final int TEXT_DIM = 0xBFFFFFFF;
+    static final int TEXT_FAINT = 0xA6FFFFFF;
     static final int GLASS = 0x1FFFFFFF;
     static final int GLASS_FOCUS = 0x2EFFFFFF;
     static final int GLASS_LINE = 0x24FFFFFF;
     /** The dock and the notes: darker glass that stays readable over a bright sky. */
     static final int DARK_GLASS = 0x5C12161C;
+    /** A whole settings page: the dock's glass, darker so the page's own text reads over a bright sky. */
+    static final int PAGE_GLASS = 0x8C12161C;
     /** Dialogs and menus. Nearly opaque: without the mockups' blur, anything behind would show through the text. */
     static final int SURFACE = 0xF01E2228;
+    /** The quick panel: over a playing film, where anything showing through behind the text reads as noise. */
+    static final int SURFACE_SOLID = 0xFA1E2228;
     static final int SCRIM = 0x80040810;
     static final int ON = 0xFF0A84FF;
     static final int WARN = 0xFFFFD27A;
@@ -72,7 +82,7 @@ final class Ui {
 
     /** A section label: small capitals, spaced, half-transparent ("СИСТЕМА"). */
     static TextView caps(Context c, String s) {
-        TextView t = text(c, s.toUpperCase(java.util.Locale.forLanguageTag("ru")), 13, 600, 0x8CFFFFFF);
+        TextView t = text(c, s.toUpperCase(java.util.Locale.forLanguageTag("ru")), 14, 600, TEXT_FAINT);
         t.setLetterSpacing(0.15f);
         return t;
     }
@@ -125,7 +135,7 @@ final class Ui {
 
     static ColorStateList inkDim() {
         return new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
-                new int[]{0xA60B0F14, TEXT_DIM});
+                new int[]{0xB30B0F14, TEXT_DIM});
     }
 
     /** Makes a focusable control: ringed and slightly larger under the cursor, children follow its state. */
@@ -194,7 +204,7 @@ final class Ui {
         l.setEllipsize(TextUtils.TruncateAt.END);
         t.addView(l);
         if (sub != null) {
-            TextView s = text(c, sub, 14, 400, TEXT_DIM);
+            TextView s = text(c, sub, 15, 400, TEXT_DIM);
             s.setTextColor(inkDim());
             s.setDuplicateParentStateEnabled(true);
             s.setSingleLine(true);
@@ -232,7 +242,7 @@ final class Ui {
         lp.topMargin = px(c, 12);
         col.addView(l, lp);
         if (sub != null) {
-            TextView s = text(c, sub, 13, 400, TEXT_DIM);
+            TextView s = text(c, sub, 15, 400, TEXT_DIM);
             s.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
             sp.topMargin = px(c, 4);
@@ -244,6 +254,80 @@ final class Ui {
 
     static void shadow(TextView t) {
         t.setShadowLayer(20, 0, 1, 0x4D000000);
+    }
+
+    /**
+     * Frosted glass: the blurred bay ({@link Backdrop}) that lies under the panel, tinted. The blur is placed by
+     * where the panel sits in the layout, not where an animation has moved it, so a page sliding in carries its
+     * glass along and it settles right. {@code radius} 0 is a whole page.
+     */
+    static final class Glass extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final Paint tint = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Matrix m = new android.graphics.Matrix();
+        private final android.graphics.RectF r = new android.graphics.RectF();
+        private final float radius;
+        private Bitmap shaderOf;
+
+        Glass(Context c, int tintColor, int lineColor, float radius) {
+            this.radius = px(c, radius);
+            tint.setColor(tintColor);
+            line.setStyle(Paint.Style.STROKE);
+            line.setStrokeWidth(Math.max(1, px(c, 1)));
+            line.setColor(lineColor);
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            r.set(getBounds());
+            Bitmap blur = Backdrop.current();
+            Object cb = getCallback();
+            if (blur != null && cb instanceof View) {
+                View v = (View) cb;
+                if (shaderOf != blur) {
+                    paint.setShader(new BitmapShader(blur, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+                    shaderOf = blur;
+                }
+                // the panel's place on screen by layout: lefts and tops up to the root, scrolls taken off
+                float x = 0, y = 0;
+                View p = v;
+                while (p != null) {
+                    x += p.getLeft() - (p == v ? 0 : p.getScrollX());
+                    y += p.getTop() - (p == v ? 0 : p.getScrollY());
+                    p = p.getParent() instanceof View ? (View) p.getParent() : null;
+                }
+                View root = v.getRootView();
+                m.setScale(root.getWidth() / (float) blur.getWidth(), root.getHeight() / (float) blur.getHeight());
+                m.postTranslate(-x, -y);
+                paint.getShader().setLocalMatrix(m);
+                c.drawRoundRect(r, radius, radius, paint);
+            }
+            c.drawRoundRect(r, radius, radius, tint);
+            if (line.getColor() != 0) {
+                float h = line.getStrokeWidth() / 2;
+                r.inset(h, h);
+                c.drawRoundRect(r, radius, radius, line);
+            }
+        }
+
+        @Override
+        public void setAlpha(int a) {
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter f) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
+
+    /** Sets {@link Glass} as the background of {@code v} and keeps it in step with the bay. */
+    static void glassBackground(View v, int tintColor, int lineColor, float radius) {
+        v.setBackground(new Glass(v.getContext(), tintColor, lineColor, radius));
+        Backdrop.watch(v);
     }
 
     /**

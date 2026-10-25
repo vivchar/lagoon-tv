@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# apple-hig uninstall.
+
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FORCE=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    -h|--help)
+      cat <<USAGE
+apple-hig uninstall
+
+Usage:
+  apple-hig-uninstall           # confirm then remove
+  apple-hig-uninstall --force   # skip confirmation
+
+Also removes the CLAUDE.md import line if ./setup --inject-claudemd was used.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown flag: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
+
+echo "This will remove: $SKILL_DIR"
+if [ "$FORCE" != "1" ]; then
+  read -r -p "Proceed? [y/N] " ans
+  case "$ans" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted."; exit 0 ;;
+  esac
+fi
+
+# Remove the import line from CLAUDE.md if present.
+CLAUDEMD="$HOME/.claude/CLAUDE.md"
+IMPORT_LINE="@$SKILL_DIR/SKILL.md"
+if [ -f "$CLAUDEMD" ] && grep -qF "$IMPORT_LINE" "$CLAUDEMD"; then
+  TMP="$(mktemp)"
+  grep -vF "$IMPORT_LINE" "$CLAUDEMD" \
+    | grep -v '^# apple-hig skill (auto-added by \./setup --inject-claudemd)$' \
+    > "$TMP"
+  mv "$TMP" "$CLAUDEMD"
+  echo "Removed import line from $CLAUDEMD"
+fi
+
+cd "$HOME"
+rm -rf "$SKILL_DIR"
+echo "Uninstalled."

@@ -98,7 +98,7 @@ final class QuickPanel {
         card.setClipChildren(false);
         card.setClipToPadding(false);
         card.setPadding(Ui.px(c, 30), Ui.px(c, 26), Ui.px(c, 30), Ui.px(c, 24));
-        card.setBackground(Ui.round(Ui.SURFACE, Ui.GLASS_LINE, 28, c));
+        card.setBackground(Ui.round(Ui.SURFACE_SOLID, Ui.GLASS_LINE, 28, c));
         root.addView(card, new FrameLayout.LayoutParams(-1, -2));
 
         LinearLayout head = new LinearLayout(c);
@@ -133,7 +133,8 @@ final class QuickPanel {
             card.addView(pills, pl);
         }
 
-        TextView hint = Ui.text(c, "← → яркость · Back — закрыть", 14, 400, Ui.TEXT_FAINT);
+        // 16 units is the 23 pt floor of TV text at 1080p: smaller can't be read from the couch
+        TextView hint = Ui.text(c, "← → яркость · Back — закрыть", 16, 400, Ui.TEXT_FAINT);
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
         hl.topMargin = Ui.px(c, 18);
         card.addView(hint, hl);
@@ -146,13 +147,15 @@ final class QuickPanel {
         r.setGravity(Gravity.CENTER_VERTICAL);
         r.setPadding(Ui.px(c, 22), 0, Ui.px(c, 22), 0);
         r.setBackground(Ui.control(c, 24));
-        r.addView(Ui.icon(c, R.drawable.ic_sun, 26));
         TextView name = Ui.text(c, "Яркость", 17, 600, Color.WHITE);
-        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(Ui.px(c, 110), -2);
-        nl.leftMargin = Ui.px(c, 16);
-        r.addView(name, nl);
+        r.addView(name, new LinearLayout.LayoutParams(Ui.px(c, 110), -2));
+        // a dim sun at the dark end, a full one at the bright end: which way is brighter needs no reading
+        r.addView(Ui.icon(c, R.drawable.ic_sun_dim, 22));
         Ui.Slider slider = new Ui.Slider(c);
-        r.addView(slider, new LinearLayout.LayoutParams(0, Ui.px(c, 32), 1));
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(0, Ui.px(c, 32), 1);
+        sl.leftMargin = sl.rightMargin = Ui.px(c, 12);
+        r.addView(slider, sl);
+        r.addView(Ui.icon(c, R.drawable.ic_sun, 28));
         TextView pct = Ui.text(c, "", 20, 600, Color.WHITE);
         pct.setGravity(Gravity.END);
         r.addView(pct, new LinearLayout.LayoutParams(Ui.px(c, 72), -2));
@@ -180,7 +183,8 @@ final class QuickPanel {
 
     private static View item(Context c, String id) {
         boolean on = Actions.NIGHT.equals(id) ? Dim.night(c) : Actions.SLEEP.equals(id) && Actions.sleepAt(c) != 0;
-        String label = Actions.SLEEP.equals(id) ? Actions.sleepLabel(c) : Actions.name(id);
+        // switched on says so in words too, not only in blue
+        String label = Actions.SLEEP.equals(id) ? Actions.sleepLabel(c) : Actions.NIGHT.equals(id) && on ? "Ночь · вкл" : Actions.name(id);
         return Ui.pill(c, Actions.icon(id), label, on, v -> {
             switch (id) {
                 case Actions.NIGHT:
