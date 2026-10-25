@@ -1,6 +1,7 @@
 package io.github.vivchar.lagoon;
 
 import android.app.Activity;
+import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -1730,6 +1731,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout r2 = row();
         boolean wifi = network(NetworkCapabilities.TRANSPORT_WIFI), vpn = network(NetworkCapabilities.TRANSPORT_VPN);
         r2.addView(Ui.round(this, R.drawable.ic_wifi, "Wi-Fi", wifi ? "подключён" : "нет сети", wifi, v -> settings(Settings.ACTION_WIFI_SETTINGS)));
+        boolean bt = bluetooth();
+        addSpaced(r2, Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", bt ? "включён" : "выключен", bt, v -> bluetoothSettings()), 44);
         addSpaced(r2, Ui.round(this, R.drawable.ic_shield, "VPN", vpn ? "включён" : "AmneziaVPN", vpn, v -> apps.open("org.amnezia.vpn")), 44);
         addSpaced(r2, Ui.round(this, R.drawable.ic_volume, "Звук", null, false, v -> settings(Settings.ACTION_SOUND_SETTINGS)), 44);
         int keys = new Mappings(this).codes().size();
@@ -1751,6 +1754,15 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
             return nc != null && nc.hasTransport(transport);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean bluetooth() {
+        try {
+            BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
+            return a != null && a.isEnabled();
         } catch (Exception e) {
             return false;
         }
@@ -1817,6 +1829,18 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         try {
             startActivity(new Intent(Intent.ACTION_MAIN).setClassName("com.android.systemui", "com.android.systemui.Somnambulator"));
         } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Android TV settings has no page for BLUETOOTH_SETTINGS; its closest one is the accessory search, which lists
+     * nearby devices to pair. Some firmwares do have the phone page, so that one goes first.
+     */
+    private void bluetoothSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+        } catch (Exception e) {
+            settings("com.google.android.intent.action.CONNECT_INPUT");
         }
     }
 
