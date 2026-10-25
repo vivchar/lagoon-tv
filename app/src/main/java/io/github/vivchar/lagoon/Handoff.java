@@ -53,7 +53,8 @@ final class Handoff {
     private static final String CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     private static ServerSocket server;
-    private static String code;
+    /** The code in the QR on screen and the one thing it may hand over: a code seen on one page can't set another. */
+    private static volatile String code, codeKind;
     private static volatile long until;
     private static Listener listener;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -71,11 +72,14 @@ final class Handoff {
         listener = l;
         until = System.currentTimeMillis() + LIFE_MS;
         if (server == null && !start(c.getApplicationContext())) return null;
+        if (!kind.equals(codeKind)) newCode(kind);
         return "http://" + ip + ":" + server.getLocalPort() + "/" + kind + "?c=" + code;
     }
 
     static synchronized void stop() {
         listener = null;
+        code = null;
+        codeKind = null;
         if (server == null) return;
         try {
             server.close();
@@ -99,13 +103,18 @@ final class Handoff {
             Log.w(TAG, "listen: " + e.getMessage());
             return false;
         }
+        ServerSocket mine = server;
+        new Thread(() -> serve(app, mine), "handoff").start();
+        return true;
+    }
+
+    /** A fresh code for {@code kind}; the old one stops working. */
+    private static void newCode(String kind) {
         SecureRandom r = new SecureRandom();
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 6; i++) sb.append(CODE_LETTERS.charAt(r.nextInt(CODE_LETTERS.length())));
         code = sb.toString();
-        ServerSocket mine = server;
-        new Thread(() -> serve(app, mine), "handoff").start();
-        return true;
+        codeKind = kind;
     }
 
     private static void serve(Context app, ServerSocket s) {
@@ -143,7 +152,7 @@ final class Handoff {
             reply(out, 404, "");
             return true;
         }
-        if (!given.equals(code)) {
+        if (!given.equals(code) || !kind.equals(codeKind)) {
             reply(out, 403, page(c, c.getString(R.string.web_expired_title), c.getString(R.string.web_expired), null, null));
             return false;
         }
@@ -172,6 +181,10 @@ final class Handoff {
         if (done == null) {
             reply(out, 200, form(c, kind, error(c, kind)));
         } else {
+            // used once: the page on the TV redraws with a new code
+            synchronized (Handoff.class) {
+                newCode(kind);
+            }
             reply(out, 200, page(c, c.getString(R.string.web_done), done, null, null));
             String v = token[0] == null ? "" : token[0];
             MAIN.post(() -> {
