@@ -7,7 +7,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
 
-/** Remote button (keycode) -> app to open on a tap and on a hold. Stored in SharedPreferences. */
+/**
+ * Remote button (keycode) -> what a tap and a hold do: an app's package, or one of {@link Actions} ("@panel").
+ * Stored in SharedPreferences.
+ */
 final class Mappings {
     static final int NETFLIX = 193;   // KEYCODE_BUTTON_6 on the Xiaomi RC
     static final int PRIME = 194;     // KEYCODE_BUTTON_7
@@ -24,6 +27,12 @@ final class Mappings {
             prefs.edit().putString(CODES, NETFLIX + "," + PRIME)
                     .putString("tap_" + NETFLIX, "com.google.android.youtube.tv")
                     .putString("tap_" + PRIME, "mobi.zona").apply();
+        }
+        if (!prefs.getBoolean("panel_hold", false)) {
+            // once, for installs from before the quick panel: holding Prime opens it, unless that hold was taken
+            SharedPreferences.Editor e = prefs.edit().putBoolean("panel_hold", true);
+            if (prefs.getString("hold_" + PRIME, null) == null) e.putString("hold_" + PRIME, Actions.PANEL);
+            e.apply();
         }
     }
 

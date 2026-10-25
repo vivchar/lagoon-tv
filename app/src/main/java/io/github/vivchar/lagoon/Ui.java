@@ -245,4 +245,59 @@ final class Ui {
     static void shadow(TextView t) {
         t.setShadowLayer(20, 0, 1, 0x4D000000);
     }
+
+    /**
+     * A pill with an icon in front, 52 high: one item of the quick panel. Blue while switched on (night, a sleep
+     * timer running).
+     */
+    static LinearLayout pill(Context c, int iconRes, String label, boolean on, View.OnClickListener click) {
+        LinearLayout p = new LinearLayout(c);
+        p.setGravity(Gravity.CENTER_VERTICAL);
+        p.setPadding(px(c, 18), 0, px(c, 22), 0);
+        p.setBackground(toggle(c, 26, on));
+        ImageView iv = new ImageView(c);
+        iv.setImageResource(iconRes);
+        p.addView(iv, new LinearLayout.LayoutParams(px(c, 20), px(c, 20)));
+        TextView t = text(c, label, 16, 600, TEXT);
+        t.setSingleLine(true);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
+        tl.leftMargin = px(c, 10);
+        p.addView(t, tl);
+        focusable(p);
+        p.setOnClickListener(click);
+        p.setLayoutParams(new LinearLayout.LayoutParams(-2, px(c, 52)));
+        return p;
+    }
+
+    /**
+     * A slider's track, knob and fill; it takes no focus itself. The row around it is what the cursor lands on,
+     * and its ←/→ move the value, so the whole row answers the remote like one control.
+     */
+    static final class Slider extends View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private float fraction;
+
+        Slider(Context c) {
+            super(c);
+        }
+
+        /** 0 at the left end, 1 at the right. */
+        void set(float f) {
+            fraction = Math.max(0, Math.min(1, f));
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(android.graphics.Canvas canvas) {
+            float knob = px(getContext(), 14), track = px(getContext(), 5), cy = getHeight() / 2f;
+            float left = knob, right = getWidth() - knob, x = left + (right - left) * fraction;
+            paint.setColor(GLASS_LINE);
+            canvas.drawRoundRect(left, cy - track, right, cy + track, track, track, paint);
+            paint.setColor(Color.WHITE);
+            canvas.drawRoundRect(left, cy - track, x, cy + track, track, track, paint);
+            paint.setShadowLayer(px(getContext(), 4), 0, px(getContext(), 1), 0x66000000);
+            canvas.drawCircle(x, cy, knob, paint);
+            paint.clearShadowLayer();
+        }
+    }
 }

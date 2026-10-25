@@ -39,10 +39,15 @@ public class KeyWatchService extends Service {
     /** Set by SettingsActivity while it waits for a button press; gets the keycode instead of an app launch. */
     interface Learner { void onKey(int code); }
     static volatile Learner learner;
+    /** The running service, so the sleep timer can be set from the panel and the settings. */
+    private static KeyWatchService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Map<Integer, Long> downAt = new HashMap<>();
     private final Map<Integer, Boolean> held = new HashMap<>();
+    /** Presses that closed the panel or woke the screen: their release must not open anything. */
+    private final java.util.Set<Integer> swallowed = new java.util.HashSet<>();
+    private final Runnable sleep = this::fallAsleep;
     private volatile boolean running;
     private Thread reader;
     private Process logcat;
@@ -64,6 +69,8 @@ public class KeyWatchService extends Service {
                 .build();
         startForeground(1, n);
         running = true;
+        instance = this;
+        armSleep(this);
         reader = new Thread(this::readLoop, "logcat");
         reader.start();
     }
@@ -76,6 +83,8 @@ public class KeyWatchService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        if (instance == this) instance = null;
+        main.removeCallbacks(sleep);
         if (logcat != null) logcat.destroy();
         super.onDestroy();
     }
@@ -120,7 +129,22 @@ public class KeyWatchService extends Service {
             if (down) l.onKey(code);
             return;
         }
+        // the sleep timer blacked the screen out: any key brings it back, and does nothing else
+        if (Dim.blackout()) {
+            if (down) {
+                Dim.setBlackout(this, false);
+                swallowed.add(code);
+            }
+            return;
+        }
+        if (!down && swallowed.remove(code)) return;
         if (!mappings.has(code)) return;
+        // a mapped button while the panel is up closes it, whichever button it is
+        if (down && QuickPanel.shown()) {
+            QuickPanel.hide();
+            swallowed.add(code);
+            return;
+        }
         if (down) {
             if (downAt.containsKey(code)) return;   // auto-repeat while held
             downAt.put(code, System.currentTimeMillis());
@@ -140,8 +164,33 @@ public class KeyWatchService extends Service {
         }
     }
 
+    /** (Re)schedules the sleep timer from what {@link Actions} saved. */
+    static void armSleep(Context c) {
+        KeyWatchService s = instance;
+        if (s == null) return;
+        s.main.removeCallbacks(s.sleep);
+        long at = Actions.sleepAt(c);
+        if (at != 0) s.main.postDelayed(s.sleep, Math.max(0, at - System.currentTimeMillis()));
+    }
+
+    /**
+     * The sleep timer ran out. The stick can't put the TV to standby, so the screen goes black and the player is
+     * asked to stop by taking the audio focus from it; a key press brings the picture back.
+     */
+    private void fallAsleep() {
+        Actions.clearSleep(this);
+        QuickPanel.hide();
+        Dim.setBlackout(this, true);
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        am.requestAudioFocus(new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN).build());
+    }
+
     private void open(String pkg) {
         if (pkg == null) return;
+        if (Actions.is(pkg)) {
+            Actions.run(this, pkg);
+            return;
+        }
         Intent intent = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
         if (intent == null) intent = getPackageManager().getLaunchIntentForPackage(pkg);
         if (intent == null) return;

@@ -171,6 +171,11 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         if (demo > 0) scene.setDemoSpeed(demo);
         // --ez saver true shows the screensaver, as «Показать сейчас» does
         if (intent.getBooleanExtra("saver", false)) startActivity(new Intent(this, SaverActivity.class));
+        // --ez quick true opens the quick panel, as holding Prime Video does (the emulator has no such button)
+        if (intent.getBooleanExtra("quick", false)) QuickPanel.show(this);
+        // --ei sleep 5 runs the sleep timer out in five seconds
+        int sleepIn = intent.getIntExtra("sleep", 0);
+        if (sleepIn > 0) Actions.sleepIn(this, sleepIn);
         String page = intent.getStringExtra("page");
         // after layout: pages slide by the screen's height, which is 0 until then
         if (page != null) root.post(() -> {
@@ -179,6 +184,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             else if ("calendar".equals(page)) openCalendar();
             else if ("places".equals(page)) openPlaces();
             else if ("telegram".equals(page)) openTelegram();
+            else if ("remote".equals(page)) openRemote();
+            else if ("panel".equals(page)) openPanelSettings(null, null);
         });
     }
 
@@ -1703,10 +1710,13 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         light.setPadding(Ui.px(this, 22), Ui.px(this, 20), Ui.px(this, 22), Ui.px(this, 20));
         light.setBackground(Ui.glass(this, 26));
         light.setClipChildren(false);
-        light.addView(Ui.text(this, "Свет", 17, 600, Color.WHITE));
         float lvl = Dim.level(this);
-        float[] levels = {0f, 0.4f, 0.7f};
-        int on = lvl == 0.7f ? 2 : lvl == 0.4f ? 1 : 0;
+        float[] levels = {0f, 0.4f, Dim.NIGHT};
+        // the panel's slider can leave the level between the presets: the nearest one is lit, the title says how much
+        int on = 0;
+        for (int i = 1; i < levels.length; i++) if (Math.abs(levels[i] - lvl) < Math.abs(levels[on] - lvl)) on = i;
+        boolean exact = Math.abs(levels[on] - lvl) < 0.01f;
+        light.addView(Ui.text(this, exact ? "Свет" : "Свет · " + Dim.brightness(this) + "%", 17, 600, Color.WHITE));
         LinearLayout pills = segmented(new String[]{"100%", "60%", "Ночь"}, on, 246, i -> dim(levels[i]));
         View firstPill = pills.getChildAt(on);
         View push = new View(this);
@@ -1732,7 +1742,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         boolean wifi = network(NetworkCapabilities.TRANSPORT_WIFI), vpn = network(NetworkCapabilities.TRANSPORT_VPN);
         r2.addView(Ui.round(this, R.drawable.ic_wifi, "Wi-Fi", wifi ? "подключён" : "нет сети", wifi, v -> settings(Settings.ACTION_WIFI_SETTINGS)));
         boolean bt = bluetooth();
-        addSpaced(r2, Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", bt ? "включён" : "выключен", bt, v -> bluetoothSettings()), 44);
+        addSpaced(r2, Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", bt ? "включён" : "выключен", bt, v -> Actions.bluetooth(this)), 44);
         addSpaced(r2, Ui.round(this, R.drawable.ic_shield, "VPN", vpn ? "включён" : "AmneziaVPN", vpn, v -> apps.open("org.amnezia.vpn")), 44);
         addSpaced(r2, Ui.round(this, R.drawable.ic_volume, "Звук", null, false, v -> settings(Settings.ACTION_SOUND_SETTINGS)), 44);
         int keys = new Mappings(this).codes().size();
@@ -1829,18 +1839,6 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         try {
             startActivity(new Intent(Intent.ACTION_MAIN).setClassName("com.android.systemui", "com.android.systemui.Somnambulator"));
         } catch (Exception ignored) {
-        }
-    }
-
-    /**
-     * Android TV settings has no page for BLUETOOTH_SETTINGS; its closest one is the accessory search, which lists
-     * nearby devices to pair. Some firmwares do have the phone page, so that one goes first.
-     */
-    private void bluetoothSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
-        } catch (Exception e) {
-            settings("com.google.android.intent.action.CONNECT_INPUT");
         }
     }
 
@@ -2659,6 +2657,14 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, Ui.px(this, 76));
         al.topMargin = Ui.px(this, 14);
         s.addView(add, al);
+        int items = 0;
+        for (String id : Actions.panelOrder(this)) if (Actions.panelShows(this, id)) items++;
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(Ui.px(this, 300), Ui.px(this, 140));
+        pl.topMargin = Ui.px(this, 14);
+        LinearLayout panelTile = Ui.tile(this, R.drawable.ic_sliders, "Быстрая панель", "яркость и " + items + " " + plural(items, "пункт", "пункта", "пунктов"), 300, 140,
+                v -> openPanelSettings(null, null));
+        panelTile.setTag("panel");
+        s.addView(panelTile, pl);
         show(h, "remote");
         if (first != null) first.requestFocus();
         else add.requestFocus();
@@ -2672,8 +2678,17 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         c.setBackground(Ui.control(this, 20));
         Apps.App app = null;
         if (pkg != null) for (Apps.App a : apps.installed()) if (a.pkg.equals(pkg)) app = a;
+        boolean action = Actions.is(pkg);
         View ic;
-        if (app != null) {
+        if (action) {
+            // an action, not an app: the blue of "switched on" tells the two apart at a glance
+            FrameLayout box = new FrameLayout(this);
+            box.setBackground(Ui.round(Ui.ON, 0, 10, this));
+            ImageView iv = new ImageView(this);
+            iv.setImageResource(Actions.icon(pkg));
+            box.addView(iv, new FrameLayout.LayoutParams(Ui.px(this, 22), Ui.px(this, 22), Gravity.CENTER));
+            ic = box;
+        } else if (app != null) {
             ImageView iv = new ImageView(this);
             iv.setImageDrawable(apps.icon(app));
             clipRound(iv, 10);
@@ -2689,7 +2704,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         t.setOrientation(LinearLayout.VERTICAL);
         TextView w = Ui.text(this, what, 13, 400, 0x99FFFFFF);
         t.addView(w);
-        TextView n = Ui.text(this, app != null ? app.label : pkg == null ? "ничего" : "не установлено", 16, 600, Color.WHITE);
+        TextView n = Ui.text(this, action ? Actions.name(pkg) : app != null ? app.label : pkg == null ? "ничего" : "не установлено", 16, 600, Color.WHITE);
         n.setSingleLine(true);
         n.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
@@ -2704,24 +2719,37 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         return c;
     }
 
+    /** What a button does: the actions on top (there are few), then every app, "ничего" first. */
     private void pickApp(int code, boolean hold) {
         Mappings mp = new Mappings(this);
         String current = hold ? mp.hold(code) : mp.tap(code);
         FrameLayout h = host();
-        LinearLayout s = page(h, Mappings.name(code) + (hold ? " · удержание" : " · нажатие"), "какое приложение открывать", true);
+        LinearLayout s = page(h, Mappings.name(code) + (hold ? " · удержание" : " · нажатие"), "что делать по кнопке", true);
+        View[] focus = new View[1];
+        section(s, "Действия");
+        s.addView(choiceGrid(java.util.Arrays.asList(Actions.ALL), code, hold, current, focus));
+        section(s, "Приложения");
         List<Apps.App> all = apps.installed();
         java.util.Collections.sort(all, (a, b) -> a.label.compareToIgnoreCase(b.label));
+        List<String> pkgs = new java.util.ArrayList<>();
+        pkgs.add(null);
+        for (Apps.App a : all) pkgs.add(a.pkg);
+        s.addView(choiceGrid(pkgs, code, hold, current, focus));
+        show(h, "remote_pick");
+        if (focus[0] != null) focus[0].requestFocus();
+    }
+
+    /** Four to a row; {@code focus[0]} ends on the current choice, or on the first card when none of these is it. */
+    private GridLayout choiceGrid(List<String> values, int code, boolean hold, String current, View[] focus) {
         GridLayout grid = new GridLayout(this);
         grid.setColumnCount(4);
-        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-1, -2);
-        gl.topMargin = Ui.px(this, 16);
+        grid.setClipChildren(false);
         int w = Math.round((getResources().getDisplayMetrics().widthPixels - Ui.px(this, 144) - Ui.px(this, 16) * 3) / 4f);
-        View focus = null;
-        for (int i = -1; i < all.size(); i++) {
-            String pkg = i < 0 ? null : all.get(i).pkg;
-            View c = appChoice(i < 0 ? "убрать" : "открыть", pkg, v -> {
-                Mappings m2 = new Mappings(this);
-                m2.set(code, hold, pkg);
+        for (int i = 0; i < values.size(); i++) {
+            String pkg = values.get(i);
+            String verb = Actions.is(pkg) ? Actions.verb(pkg) : pkg == null ? "убрать" : "открыть";
+            View c = appChoice(verb, pkg, v -> {
+                new Mappings(this).set(code, hold, pkg);
                 goingBack = true;
                 closeOverlay();
                 openRemote();
@@ -2739,15 +2767,130 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
             lp.width = w;
             lp.height = Ui.px(this, 72);
-            lp.rightMargin = (i + 1) % 4 == 3 ? 0 : Ui.px(this, 16);
-            lp.topMargin = Ui.px(this, 16);
+            lp.rightMargin = i % 4 == 3 ? 0 : Ui.px(this, 16);
+            if (i >= 4) lp.topMargin = Ui.px(this, 16);
             c.setBackground(Ui.control(this, 22));
             grid.addView(c, lp);
-            if (focus == null || chosen) focus = c;
+            if (focus[0] == null || chosen) focus[0] = c;
         }
-        s.addView(grid, gl);
-        show(h, "remote_pick");
-        if (focus != null) focus.requestFocus();
+        return grid;
+    }
+
+    // ---- the quick panel's settings
+
+    /**
+     * Which items the quick panel shows and in what order, how soon it hides and how far one press moves the
+     * brightness. OK shows or hides an item; a long OK picks it up, ↑/↓ carry it, OK or Back put it down.
+     */
+    private void openPanelSettings(String focus, String moving) {
+        FrameLayout h = host();
+        LinearLayout s = page(h, "Панель", "по удержанию Prime Video", true);
+        section(s, "Пункты");
+        LinearLayout fixed = panelRow("Яркость", "бегунок · всегда первая", true, false);
+        fixed.setFocusable(false);
+        fixed.setAlpha(0.7f);
+        s.addView(fixed);
+        List<String> order = Actions.panelOrder(this);
+        View first = null, wanted = null;
+        for (String id : order) {
+            boolean on = Actions.panelShows(this, id);
+            String sub = Actions.SLEEP.equals(id) ? "15 · 30 · 45 · 60 · 90 мин" : Actions.verb(id);
+            LinearLayout r = panelRow(Actions.name(id), id.equals(moving) ? "↑ ↓ — двигать, OK — поставить" : sub, on, id.equals(moving));
+            r.setTag("panel_" + id);
+            Ui.focusable(r);
+            r.setOnClickListener(v -> {
+                if (moving != null) {
+                    redrawPanelSettings(id, null);
+                    return;
+                }
+                Actions.setPanelShows(this, id, !on);
+                redrawPanelSettings(id, null);
+            });
+            r.setOnLongClickListener(v -> {
+                redrawPanelSettings(id, id);
+                return true;
+            });
+            if (id.equals(moving)) r.setOnKeyListener((v, k, e) -> {
+                if (k == KeyEvent.KEYCODE_BACK) {
+                    if (e.getAction() == KeyEvent.ACTION_UP) redrawPanelSettings(id, null);
+                    return true;
+                }
+                if (k != KeyEvent.KEYCODE_DPAD_UP && k != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    int i = order.indexOf(id), j = i + (k == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+                    if (j >= 0 && j < order.size()) {
+                        java.util.Collections.swap(order, i, j);
+                        Actions.setPanelOrder(this, order);
+                        redrawPanelSettings(id, id);
+                    }
+                }
+                return true;
+            });
+            LinearLayout.LayoutParams rl = (LinearLayout.LayoutParams) r.getLayoutParams();
+            rl.topMargin = Ui.px(this, 10);
+            s.addView(r);
+            if (first == null) first = r;
+            if (id.equals(focus)) wanted = r;
+        }
+        TextView tip = label("OK — показать или скрыть · долгий OK — взять и двигать стрелками");
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
+        tl.topMargin = Ui.px(this, 16);
+        s.addView(tip, tl);
+
+        section(s, "Скрывать через");
+        int[] secs = {3, 5, 10};
+        int t = Actions.panelTimeout(this);
+        LinearLayout hide = segmented(new String[]{"3 с", "5 с", "10 с"}, t == 3 ? 0 : t == 10 ? 2 : 1, 300, i -> {
+            Actions.setPanelTimeout(this, secs[i]);
+            redrawPanelSettings("timeout", null);
+        });
+        hide.setTag("timeout");
+        s.addView(hide);
+        section(s, "Шаг яркости");
+        int[] steps = {5, 10};
+        LinearLayout step = segmented(new String[]{"5%", "10%"}, Actions.brightnessStep(this) == 10 ? 1 : 0, 200, i -> {
+            Actions.setBrightnessStep(this, steps[i]);
+            redrawPanelSettings("step", null);
+        });
+        step.setTag("step");
+        s.addView(step);
+        show(h, "panel_settings");
+        View f = wanted != null ? wanted : "timeout".equals(focus) ? hide.findViewWithTag("on")
+                : "step".equals(focus) ? step.findViewWithTag("on") : first;
+        if (f != null) f.requestFocus();
+    }
+
+    private void redrawPanelSettings(String focus, String moving) {
+        openPanelSettings(focus, moving);
+    }
+
+    /** One item of the panel: its name and a line, a switch on the right; white while it is being moved. */
+    private LinearLayout panelRow(String name, String sub, boolean on, boolean moving) {
+        LinearLayout r = row();
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(Ui.px(this, 22), 0, Ui.px(this, 20), 0);
+        r.setBackground(Ui.control(this, 24));
+        r.setSelected(moving);
+        TextView n = Ui.text(this, name, 16, 600, Color.WHITE);
+        n.setTextColor(Ui.ink());
+        r.addView(n, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView l = Ui.text(this, sub, 14, 400, Ui.TEXT_DIM);
+        l.setTextColor(Ui.inkDim());
+        r.addView(l);
+        View sw = new View(this);
+        sw.setBackground(Ui.round(on ? Ui.ON : 0x38FFFFFF, 0, 13, this));
+        FrameLayout swb = new FrameLayout(this);
+        swb.addView(sw, new FrameLayout.LayoutParams(-1, -1));
+        View knob = new View(this);
+        knob.setBackground(Ui.round(Color.WHITE, 0, 10, this));
+        FrameLayout.LayoutParams kl = new FrameLayout.LayoutParams(Ui.px(this, 20), Ui.px(this, 20), Gravity.CENTER_VERTICAL | (on ? Gravity.END : Gravity.START));
+        kl.leftMargin = kl.rightMargin = Ui.px(this, 3);
+        swb.addView(knob, kl);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(Ui.px(this, 44), Ui.px(this, 26));
+        sl.leftMargin = Ui.px(this, 18);
+        r.addView(swb, sl);
+        r.setLayoutParams(new LinearLayout.LayoutParams(Ui.px(this, 640), Ui.px(this, 56)));
+        return r;
     }
 
     // ---- Telegram settings

@@ -35,7 +35,9 @@ adb -s emulator-5554 shell input keyevent DPAD_DOWN   # UP, LEFT, RIGHT, DPAD_CE
 | `--ez bare true` | Прячет интерфейс, остаётся только сцена |
 | `--ef demo 120` | Сутки в 120 раз быстрее, с 05:00 |
 | `--ez saver true` | Открывает заставку |
-| `--es page scene\|calendar\|places\|telegram` | Сразу открывает страницу настроек |
+| `--es page scene\|calendar\|places\|telegram\|remote\|panel` | Сразу открывает страницу настроек |
+| `--ez quick true` | Открывает быструю панель (на эмуляторе нет кнопки Prime) |
+| `--ei sleep 5` | Таймер сна сработает через 5 секунд |
 
 ```bash
 adb -s emulator-5554 shell am start -n io.github.vivchar.lagoon/.MainActivity --es phase sunset --es style pictures
@@ -82,3 +84,5 @@ adb logcat -s LagoonScene Home Weather Telegram Cal Saver NoteMedia RemoteKeys
 - Время суток: `--ef demo 120` и посмотреть смену подложек и клипов.
 - Заставка: «Показать сейчас» в плитке «Заставка» или `--ez saver true`.
 - Кнопки Netflix и Prime Video — только на стике.
+- Пробуждение после таймера сна — только на стике: эмулятор не пишет
+  нажатия в logcat, и `KeyWatchService` их не видит.
