@@ -79,7 +79,7 @@ final class Cal {
                 JSONObject o = a.getJSONObject(i);
                 Source s = new Source();
                 s.url = o.getString("url");
-                s.name = o.optString("name", "Календарь");
+                s.name = o.optString("name", Lang.wrap(c).getString(R.string.cal_default));
                 s.color = o.optInt("color", COLORS[i % COLORS.length]);
                 s.shown = o.optBoolean("shown", true);
                 out.add(s);
@@ -105,7 +105,7 @@ final class Cal {
             String name = null;
             try {
                 List<String> lines = fetch(url);
-                name = "Календарь";
+                name = Lang.wrap(app).getString(R.string.cal_default);
                 for (String l : lines) if (l.startsWith("X-WR-CALNAME:")) name = l.substring(13).trim();
                 List<Source> list = sources(app);
                 list.removeIf(s -> s.url.equals(url));
@@ -176,10 +176,11 @@ final class Cal {
 
     private static void refresh(Context c, Runnable done) {
         List<Event> all = new ArrayList<>();
+        String untitled = Lang.wrap(c).getString(R.string.event_untitled);
         for (Source s : sources(c)) {
             if (!s.shown) continue;
             try {
-                all.addAll(parse(fetch(s.url), s.color));
+                all.addAll(parse(fetch(s.url), s.color, untitled));
             } catch (Exception e) {
                 Log.w("Cal", "read " + s.name, e);
             }
@@ -264,7 +265,7 @@ final class Cal {
     }
 
     /** The events of an iCal file that happen today, recurring ones included (daily, weekly, monthly, yearly). */
-    static List<Event> parse(List<String> lines, int color) {
+    static List<Event> parse(List<String> lines, int color, String untitled) {
         List<Event> out = new ArrayList<>();
         Calendar today = Calendar.getInstance();
         String key = new SimpleDateFormat("yyyyMMdd", Locale.US).format(today.getTime());
@@ -280,7 +281,7 @@ final class Cal {
                 if ("CANCELLED".equals(status) || start == null) continue;
                 Event e = occurrence(start, end, rrule, today, key);
                 if (e == null) continue;
-                e.title = title == null ? "Событие" : unescape(title);
+                e.title = title == null ? untitled : unescape(title);
                 e.important = alarm;
                 e.color = color;
                 out.add(e);

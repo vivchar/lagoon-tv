@@ -17,10 +17,8 @@ import android.os.SystemClock;
 import android.view.View;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * The screensaver: photos from the iCloud album, one, two or three at a time, slowly drifting, with the clock,
@@ -29,10 +27,7 @@ import java.util.Locale;
  * slide always ready before the current one ends, and slides cross-fade.
  */
 final class SaverView extends View {
-    private static final Locale RU = Locale.forLanguageTag("ru");
     private static final long FADE_MS = 1200;
-    private static final String[] MONTHS = {"январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август",
-            "сентябрь", "октябрь", "ноябрь", "декабрь"};
 
     /** What one screen shows: one to three photos and how they share it. */
     private static final class Slide {
@@ -121,7 +116,10 @@ final class SaverView extends View {
                 s.blur = Bitmap.createScaledBitmap(b, 24, Math.max(1, 24 * b.getHeight() / b.getWidth()), true);
             }
             int[] d = Saver.date(first);
-            s.when = d == null ? "" : MONTHS[d[1] - 1] + " " + d[0];
+            // the month's own (nominative) name from the chosen language, then the year
+            java.util.Calendar month = java.util.Calendar.getInstance();
+            month.set(d == null ? 2000 : d[0], d == null ? 0 : d[1] - 1, 1);
+            s.when = d == null ? "" : Lang.date(getContext(), "LLLL", month.getTime()) + " " + d[0];
             int used = count;
             post(() -> {
                 ready = s;
@@ -203,7 +201,7 @@ final class SaverView extends View {
         text.setTextSize(u(18));
         text.setColor(0x99FFFFFF);
         text.setTextAlign(Paint.Align.CENTER);
-        c.drawText(files.isEmpty() ? "Фото из альбома загружаются…" : "", getWidth() / 2f, getHeight() / 2f, text);
+        c.drawText(files.isEmpty() ? getContext().getString(R.string.photos_loading) : "", getWidth() / 2f, getHeight() / 2f, text);
         text.setTextAlign(Paint.Align.LEFT);
     }
 
@@ -272,12 +270,12 @@ final class SaverView extends View {
         text.setColor(0xFFFFFFFF);
         text.setShadowLayer(u(16), 0, u(1), 0x59000000);
         float clockY = h - u(52) - u(16) - u(6) - u(13) - u(12);
-        c.drawText(new SimpleDateFormat("HH:mm", RU).format(new Date()), x, clockY, text);
+        c.drawText(Lang.clock(getContext(), new Date()), x, clockY, text);
         text.setTypeface(Ui.font(getContext(), 600));
         text.setTextSize(u(13));
-        text.setLetterSpacing(0.23f);
+        text.setLetterSpacing(Lang.tracking(getContext(), 0.23f));
         text.setColor(0xCCFFFFFF);
-        c.drawText(new SimpleDateFormat("EEEE, d MMMM", RU).format(new Date()).toUpperCase(RU), x, clockY + u(12) + u(13), text);
+        c.drawText(Lang.date(getContext(), "EEEEdMMMM", new Date()).toUpperCase(Lang.locale(getContext())), x, clockY + u(12) + u(13), text);
         text.setTypeface(Ui.font(getContext(), 400));
         text.setTextSize(u(16));
         text.setLetterSpacing(0);
@@ -295,7 +293,7 @@ final class SaverView extends View {
             text.setTypeface(Ui.font(getContext(), 400));
             text.setTextSize(u(15));
             text.setColor(0xBFFFFFFF);
-            if (!cur.when.isEmpty() && !album.isEmpty()) c.drawText("альбом «" + album + "»", right, h - u(56) - u(20), text);
+            if (!cur.when.isEmpty() && !album.isEmpty()) c.drawText(getContext().getString(R.string.album_label, album), right, h - u(56) - u(20), text);
             text.setTextAlign(Paint.Align.LEFT);
             // five dots, the long one walks along with the photos
             int n = Math.max(1, files.size()), at = cur.at * 5 / n;

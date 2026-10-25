@@ -49,10 +49,20 @@ import java.util.Locale;
  * small menu over it: pin it here, unpin it, or move it.
  */
 public class MainActivity extends Activity implements Weather.Listener, Telegram.Listener {
-    private static final Locale RU = Locale.forLanguageTag("ru");
+    /** The language of dates and capitals: the chosen one, not the TV's. */
+    private Locale loc() {
+        return Lang.locale(this);
+    }
+
+    @Override
+    protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
 
     private SceneView scene;
     private View sceneShade;
+    /** Home is on screen: the quick panel over it can blur the bay like every other panel. */
+    static volatile boolean front;
     private SceneVideo video;
     private FrameLayout root, home;
     private TextView greeting, time, date, weatherLine, focusedName;
@@ -61,7 +71,6 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     private android.widget.HorizontalScrollView shelfScroll;
     private View overlay;
     private Apps apps;
-    private FocusRing ring;
     private Weather weather;
     private Telegram tg;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -118,13 +127,6 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         buildMessages();
         buildShelf();
         setContentView(root);
-        // one frame glides between the dock's tiles; anything else hides it
-        ring = new FocusRing(this, root);
-        root.getViewTreeObserver().addOnGlobalFocusChangeListener((old, now) -> {
-            boolean tile = now != null && now.getParent() == shelf && now instanceof FrameLayout;
-            if (tile) ring.follow(now);
-            else ring.hide();
-        });
 
         weather.setListener(this);
         tg.setListener(this);
@@ -132,7 +134,35 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         KeyWatchService.start(this);
         Dim.apply(getApplicationContext());
         applyScene();
+        // the language was just changed: the restart brings the settings back, on the language page
+        if (savedInstanceState != null && savedInstanceState.getBoolean("reopen_language")) {
+            root.post(() -> {
+                openPanel();
+                openLanguage();
+            });
+        }
         testing(getIntent());
+    }
+
+    /** The language page asked for a restart: when the screen comes back it opens the settings again. */
+    private boolean reopenLanguage;
+    /** A restart for a new language is under way: the next activity builds its own Telegram. */
+    private boolean restarting;
+
+    @Override
+    protected void onDestroy() {
+        // two instances polling one bot would fight over its updates
+        if (restarting) {
+            tg.stop();
+            tg.setListener(null);
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putBoolean("reopen_language", reopenLanguage);
     }
 
     /** Testing: --es phase sunset pins a moment of the day, --ef demo 120 runs the day 120× faster, --ez saver true opens the screensaver,
@@ -148,6 +178,16 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     }
 
     private void testExtras(Intent intent) {
+        // --es lang th|en|ru|zh|es|de|system switches the interface language; the activity restarts and reads the flags again
+        String lang = intent.getStringExtra("lang");
+        if (lang != null && !lang.equals(Lang.get(this))) {
+            if (!Lang.SYSTEM.equals(lang) && !java.util.Arrays.asList(Lang.CODES).contains(lang)) throw new IllegalArgumentException("lang " + lang);
+            Lang.set(this, lang);
+            setIntent(intent);
+            restarting = true;
+            recreate();
+            return;
+        }
         String phase = intent.getStringExtra("phase");
         if (phase != null) {
             int[] at = {7 * 60 + 10, 13 * 60 + 40, 18 * 60 + 5, 22 * 60 + 30};
@@ -169,7 +209,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         // --ez saver true shows the screensaver, as «Показать сейчас» does
         if (intent.getBooleanExtra("saver", false)) startActivity(new Intent(this, SaverActivity.class));
         // --ez quick true opens the quick panel, as holding Prime Video does (the emulator has no such button)
-        if (intent.getBooleanExtra("quick", false)) QuickPanel.show(this);
+        // after onResume: a new intent arrives while Home is paused, and the panel is glass only over a Home in front
+        if (intent.getBooleanExtra("quick", false)) root.postDelayed(() -> QuickPanel.show(this), 600);
         // --ei sleep 5 runs the sleep timer out in five seconds
         int sleepIn = intent.getIntExtra("sleep", 0);
         if (sleepIn > 0) Actions.sleepIn(this, sleepIn);
@@ -177,33 +218,32 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         // after layout: pages slide by the screen's height, which is 0 until then
         if (page != null) root.post(() -> {
             openPanel();
-            if ("scene".equals(page)) openScene();
+            if ("saver".equals(page)) openSaver();
+            else if ("scene".equals(page)) openScene();
             else if ("calendar".equals(page)) openCalendar();
             else if ("places".equals(page)) openPlaces();
             else if ("telegram".equals(page)) openTelegram();
             else if ("remote".equals(page)) openRemote();
             else if ("panel".equals(page)) openPanelSettings(null, null);
+            else if ("language".equals(page)) openLanguage();
         });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        front = true;
         scene.setRunning(true);
         video.setRunning(true);
         reloadShelf();
         renderMessages();
-        // the first focus lands before the window is shown and fires no focus change: frame it by hand
-        root.post(() -> {
-            View f = getCurrentFocus();
-            if (f != null && f.getParent() == shelf) ring.follow(f);
-        });
         handler.removeCallbacks(tick);
         tick.run();
     }
 
     @Override
     protected void onPause() {
+        front = false;
         scene.setRunning(false);
         video.setRunning(false);
         handler.removeCallbacks(tick);
@@ -235,7 +275,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         time.setSingleLine(true);
         time.setLetterSpacing(-0.045f);
         date = Ui.text(this, "", 15, 600, Color.WHITE);
-        date.setLetterSpacing(0.23f);
+        date.setLetterSpacing(Lang.tracking(this, 0.23f));
         date.setAlpha(0.78f);
         weatherLine = Ui.text(this, "", 16, 400, Color.WHITE);
         weatherLine.setAlpha(0.9f);
@@ -248,17 +288,17 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         dl.topMargin = Ui.px(this, 12);
         col.addView(date, dl);
         // the weather, the offline line and the storm warning are one block the cursor can land on: OK opens
-        // the forecast. It pads out around its text so the ring has room, and the text keeps its place.
+        // the forecast. It pads out around its text so the white has room, and the text keeps its place.
         weatherBox = new LinearLayout(this);
         weatherBox.setOrientation(LinearLayout.VERTICAL);
         int bp = Ui.px(this, 12);
         weatherBox.setPadding(bp, Ui.px(this, 8), bp, Ui.px(this, 8));
         StateListDrawable wb = new StateListDrawable();
-        GradientDrawable wf = Ui.round(Ui.GLASS_FOCUS, 0, 18, this);
-        wf.setStroke(Ui.px(this, 3), Color.WHITE);
-        wb.addState(new int[]{android.R.attr.state_focused}, wf);
+        wb.addState(new int[]{android.R.attr.state_focused}, Ui.round(Color.WHITE, 0, 18, this));
         wb.addState(new int[]{}, Ui.round(0x00FFFFFF, 0, 18, this));
         weatherBox.setBackground(wb);
+        // white under the cursor like every control: its lines turn dark meanwhile
+        weatherBox.setOnFocusChangeListener((v, has) -> Ui.inkOn(v, has));
         weatherBox.setFocusable(true);
         weatherBox.setClickable(true);
         weatherBox.setOnClickListener(v -> openWeather());
@@ -320,9 +360,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     private void updateClock() {
         Date now = new Date();
         int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
-        greeting.setText(h < 5 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 17 ? "Добрый день" : h < 23 ? "Добрый вечер" : "Доброй ночи");
-        time.setText(new SimpleDateFormat("HH:mm", RU).format(now));
-        date.setText(new SimpleDateFormat("EEEE, d MMMM", RU).format(now).toUpperCase(RU));
+        greeting.setText(getString(h < 5 ? R.string.greet_night : h < 12 ? R.string.greet_morning : h < 17 ? R.string.greet_day : h < 23 ? R.string.greet_evening : R.string.greet_night));
+        time.setText(Lang.clock(this, now));
+        // the skeleton lets each language order the weekday, day and month its own way
+        date.setText(Lang.date(this, "EEEEdMMMM", now).toUpperCase(loc()));
     }
 
     /** Without a network the weather line stays, and a line under it says how old it is. */
@@ -330,8 +371,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         boolean none = !online();
         offline.setVisibility(none ? View.VISIBLE : View.GONE);
         long at = weather.updatedAt();
-        if (none) ((TextView) offline.getChildAt(1)).setText(at == 0 ? "Нет интернета" : "Нет интернета — погода и события от "
-                + new SimpleDateFormat("HH:mm", RU).format(new Date(at)));
+        if (none) ((TextView) offline.getChildAt(1)).setText(at == 0 ? getString(R.string.offline)
+                : getString(R.string.offline_since, Lang.clock(this, new Date(at))));
     }
 
     private boolean online() {
@@ -350,8 +391,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         today.removeAllViews();
         today.setVisibility(list.isEmpty() ? View.GONE : View.VISIBLE);
         if (list.isEmpty()) return;
-        TextView cap = Ui.text(this, "СЕГОДНЯ", 15, 600, Color.WHITE);
-        cap.setLetterSpacing(0.23f);
+        TextView cap = Ui.text(this, getString(R.string.today).toUpperCase(loc()), 15, 600, Color.WHITE);
+        cap.setLetterSpacing(Lang.tracking(this, 0.23f));
         cap.setAlpha(0.7f);
         Ui.shadow(cap);
         today.addView(cap);
@@ -365,7 +406,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             d.setColor(e.color);
             dot.setBackground(d);
             r.addView(dot, new LinearLayout.LayoutParams(Ui.px(this, 8), Ui.px(this, 8)));
-            TextView t = Ui.text(this, e.allDay ? "весь день" : new SimpleDateFormat("HH:mm", RU).format(new Date(e.start)), 17, 600, Color.WHITE);
+            TextView t = Ui.text(this, e.allDay ? getString(R.string.all_day) : Lang.clock(this, new Date(e.start)), 17, 600, Color.WHITE);
             t.setFontFeatureSettings("tnum");
             Ui.shadow(t);
             LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
@@ -558,9 +599,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             if (c.getBottom() <= top) above++;
             else if (c.getTop() >= bottom) below++;
         }
-        more[0].setText("↑ ещё " + above);
+        more[0].setText(getString(R.string.more_above, above));
         more[0].setVisibility(above > 0 ? View.VISIBLE : View.INVISIBLE);
-        more[1].setText("↓ ещё " + below);
+        more[1].setText(getString(R.string.more_below, below));
         more[1].setVisibility(below > 0 ? View.VISIBLE : View.INVISIBLE);
     }
 
@@ -621,7 +662,14 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         releaseMedia();
         messages.removeAllViews();
         List<Telegram.Msg> list = tg.messages();
+        boolean compact = notesAsList();
         for (Telegram.Msg m : list) {
+            if (compact) {
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+                rl.bottomMargin = Ui.px(this, 8);
+                messages.addView(noteRow(m), rl);
+                continue;
+            }
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(Ui.px(this, 18), Ui.px(this, 16), Ui.px(this, 18), Ui.px(this, 16));
@@ -677,7 +725,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 pic.addView(iv, new FrameLayout.LayoutParams(-1, -1));
                 if ("video".equals(m.kind)) {
                     // a video arrives as its still: say so in the corner
-                    TextView tag = Ui.text(this, "Видео", 14, 600, Color.WHITE);
+                    TextView tag = Ui.text(this, getString(R.string.video), 14, 600, Color.WHITE);
                     tag.setPadding(Ui.px(this, 8), Ui.px(this, 3), Ui.px(this, 8), Ui.px(this, 3));
                     tag.setBackground(Ui.round(0x99000000, 0, 8, this));
                     FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.START | Gravity.BOTTOM);
@@ -753,8 +801,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         // OK the next note takes over, and with none left the cursor goes back to the app it came from.
         messages.post(this::updateMore);
         long newest = list.isEmpty() ? 0 : list.get(0).date;
-        boolean fresh = newest > seenMsg;
-        seenMsg = Math.max(seenMsg, newest);
+        // what was already there when Home started is not news: the cursor starts on the dock, and only a note
+        // that arrives while Home is open takes it
+        boolean fresh = seenMsg > 0 && newest > seenMsg;
+        seenMsg = Math.max(seenMsg, Math.max(newest, 1));
         if (overlay != null || movingPkg != null || menu != null || shelf == null) return;
         if (!list.isEmpty() && (onNote || fresh)) messages.getChildAt(0).requestFocus();
         else if (onNote || getCurrentFocus() == null) backToShelf();
@@ -790,9 +840,116 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         }
     }
 
-    private static String hintFor(View card) {
+    // ---- notes as a list
+
+    private android.content.SharedPreferences notesPrefs() {
+        return getSharedPreferences("notes", MODE_PRIVATE);
+    }
+
+    /** Notes as short to-do lines (avatar, name, text) instead of whole messages; the default look. */
+    private boolean notesAsList() {
+        return notesPrefs().getBoolean("list", true);
+    }
+
+    /**
+     * One note as one line, the to-do look: who and what, no pictures or players. A photo or a clip shows as its
+     * kind's icon. OK marks it done, as on a card.
+     */
+    private View noteRow(Telegram.Msg m) {
+        boolean names = notesPrefs().getBoolean("names", true), avatars = notesPrefs().getBoolean("avatars", true);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(Ui.px(this, 14), Ui.px(this, 10), Ui.px(this, 16), Ui.px(this, 10));
+        Ui.glassBackground(row, NOTE_GLASS, NOTE_LINE, 18);
+        row.setId(View.generateViewId());
+        row.setFocusable(true);
+        row.setClickable(true);
+        long id = m.id, from = m.from;
+        LinearLayout line = new LinearLayout(this);
+        line.setGravity(Gravity.CENTER_VERTICAL);
+        if (avatars) {
+            line.addView(avatar(m.from, m.name, 26));
+        } else if (!names) {
+            // neither who nor a face: a dot keeps it a list item
+            View dot = new View(this);
+            dot.setBackground(Ui.round(Ui.TEXT_DIM, 0, 4, this));
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(Ui.px(this, 8), Ui.px(this, 8));
+            dl.leftMargin = Ui.px(this, 4);
+            dl.rightMargin = Ui.px(this, 2);
+            line.addView(dot, dl);
+        }
+        if (names) {
+            TextView who = Ui.text(this, m.name, 15, 600, Color.WHITE);
+            who.setSingleLine(true);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
+            wl.leftMargin = Ui.px(this, avatars ? 10 : 0);
+            line.addView(who, wl);
+        }
+        int glyph = "voice".equals(m.kind) ? R.drawable.ic_mic : "audio".equals(m.kind) ? R.drawable.ic_music
+                : "place".equals(m.kind) ? R.drawable.ic_pin : m.photo != null || m.clip != null ? R.drawable.ic_image : 0;
+        if (glyph != 0) {
+            ImageView ic = new ImageView(this);
+            ic.setImageResource(glyph);
+            LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(Ui.px(this, 18), Ui.px(this, 18));
+            il.leftMargin = Ui.px(this, 10);
+            line.addView(ic, il);
+        }
+        String text = m.text != null && !m.text.isEmpty() ? m.text : getString(m.clip != null ? R.string.video : R.string.note_photo);
+        TextView body = Ui.text(this, text, 16, 400, Color.WHITE);
+        body.setSingleLine(true);
+        body.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(0, -2, 1);
+        bl.leftMargin = line.getChildCount() == 0 ? 0 : Ui.px(this, 10);
+        line.addView(body, bl);
+        row.addView(line);
+        TextView hint = Ui.text(this, getString(R.string.hint_read), 15, 400, 0x8C0B0F14);
+        hint.setVisibility(View.GONE);
+        hint.setTag("hint");
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
+        hl.topMargin = Ui.px(this, 6);
+        hl.leftMargin = avatars ? Ui.px(this, 36) : 0;
+        row.addView(hint, hl);
+        row.setOnClickListener(v -> v.animate().alpha(0f).translationX(Ui.px(this, 40)).setDuration(220)
+                .withEndAction(() -> tg.dismiss(from, id)).start());
+        row.setOnFocusChangeListener((v, has) -> {
+            // under the cursor the line opens up: the whole text, and what OK does
+            if (has) v.setBackground(Ui.round(0xF0FFFFFF, Color.WHITE, 18, this));
+            else Ui.glassBackground(v, NOTE_GLASS, NOTE_LINE, 18);
+            body.setSingleLine(!has);
+            if (has) body.setMaxLines(4);
+            recolor((ViewGroup) v, has);
+            hint.setVisibility(has ? View.VISIBLE : View.GONE);
+            Ui.grow(v, has);
+            if (has) focusedName.animate().alpha(0f).setDuration(150).start();
+        });
+        return row;
+    }
+
+    /** A note as a whole message, for the sample on the Telegram page: who, when, the text. */
+    private View sampleCard(Telegram.Msg m) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(Ui.px(this, 18), Ui.px(this, 16), Ui.px(this, 18), Ui.px(this, 16));
+        Ui.glassBackground(card, NOTE_GLASS, NOTE_LINE, 22);
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(avatar(m.from, m.name, 30));
+        TextView name = Ui.text(this, m.name, 15, 600, Color.WHITE);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1);
+        nl.leftMargin = Ui.px(this, 10);
+        head.addView(name, nl);
+        head.addView(Ui.text(this, when(m.date), 15, 400, Ui.TEXT_DIM));
+        card.addView(head);
+        TextView body = Ui.text(this, m.text, 17, 400, Color.WHITE);
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, -2);
+        bl.topMargin = Ui.px(this, 10);
+        card.addView(body, bl);
+        return card;
+    }
+
+    private String hintFor(View card) {
         NoteMedia media = (NoteMedia) card.getTag(R.id.media);
-        return media != null ? media.hint() : "OK — прочитано, ↓ — к приложениям";
+        return media != null ? media.hint() : getString(R.string.hint_read);
     }
 
     /** Stops every player on the notes: before they are drawn again, and when Home goes to the background. */
@@ -837,11 +994,11 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     private String when(long unix) {
         Calendar now = Calendar.getInstance(), c = Calendar.getInstance();
         c.setTimeInMillis(unix * 1000);
-        String hm = new SimpleDateFormat("HH:mm", RU).format(c.getTime());
+        String hm = Lang.clock(this, c.getTime());
         if (now.get(Calendar.DAY_OF_YEAR) == c.get(Calendar.DAY_OF_YEAR) && now.get(Calendar.YEAR) == c.get(Calendar.YEAR)) return hm;
         now.add(Calendar.DAY_OF_YEAR, -1);
-        if (now.get(Calendar.DAY_OF_YEAR) == c.get(Calendar.DAY_OF_YEAR)) return "вчера";
-        return new SimpleDateFormat("d MMM", RU).format(c.getTime());
+        if (now.get(Calendar.DAY_OF_YEAR) == c.get(Calendar.DAY_OF_YEAR)) return getString(R.string.yesterday);
+        return Lang.date(this, "dMMM", c.getTime());
     }
 
     private void clipRound(View v, float r) {
@@ -891,7 +1048,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         home.addView(focusedName, nl);
 
         FrameLayout band = new FrameLayout(this);
-        Ui.glassBackground(band, Ui.DARK_GLASS, Ui.GLASS_LINE, 34);
+        Ui.glassBackground(band, Ui.DARK_GLASS, Ui.GLASS_LINE, Ui.RADIUS_PANEL);
         shelfScroll = new HGlideScroll(this);
         shelfScroll.setHorizontalScrollBarEnabled(false);
         shelfScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -1030,9 +1187,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             t.addView(inner, new FrameLayout.LayoutParams(-1, -1));
         }
         t.setOnFocusChangeListener((v, has) -> {
-            // the tile under the cursor lifts out of the dock; the ring follows it there
+            // the tile under the cursor lifts out of the dock, larger and with a shadow under it: tvOS has no ring
             v.animate().scaleX(has ? FocusRing.TILE_SCALE : 1f).scaleY(has ? FocusRing.TILE_SCALE : 1f)
-                    .translationY(has ? -Ui.px(this, 8) : 0).translationZ(has ? 8 : 0)
+                    .translationY(has ? -Ui.px(this, 8) : 0).translationZ(has ? Ui.px(this, 18) : 0)
                     .setInterpolator(FocusRing.EASE).setDuration(FocusRing.MS).start();
             if (has) {
                 lastTile = v;
@@ -1040,8 +1197,11 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                     focusedName.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.px(this, 30));
                     focusedName.setText(a.label);
                     pinMark(apps.pinned(a.pkg));
-                    focusedName.setAlpha(0.2f);
-                    focusedName.animate().alpha(1f).setDuration(180).start();
+                    // the new name rises a little into place instead of blinking in
+                    focusedName.animate().cancel();
+                    focusedName.setAlpha(0f);
+                    focusedName.setTranslationY(Ui.px(this, 6));
+                    focusedName.animate().alpha(1f).translationY(0).setInterpolator(FocusRing.EASE).setDuration(220).start();
                 }
             }
         });
@@ -1072,32 +1232,33 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         card.setOrientation(LinearLayout.VERTICAL);
         int p = Ui.px(this, 10);
         card.setPadding(p, p, p, p);
-        card.setBackground(Ui.round(Ui.SURFACE, 0x29FFFFFF, 28, this));
+        // the dock's own glass: the menu belongs to it and should look like part of it
+        Ui.glassBackground(card, Ui.DARK_GLASS, Ui.GLASS_LINE, Ui.RADIUS_PANEL);
         card.setElevation(Ui.px(this, 24));
-        TextView cap = Ui.text(this, pinned ? "Закреплено, стоит слева" : "Сейчас стоит по частоте запусков", 15, 400, Ui.TEXT_DIM);
+        TextView cap = Ui.text(this, getString(pinned ? R.string.menu_pinned : R.string.menu_by_use), 15, 400, Ui.TEXT_DIM);
         cap.setPadding(Ui.px(this, 14), Ui.px(this, 8), Ui.px(this, 14), Ui.px(this, 10));
         card.addView(cap);
-        View first = menuRow(card, pinned ? R.drawable.ic_close : R.drawable.ic_pushpin, pinned ? "Открепить" : "Закрепить", v -> {
+        View first = menuRow(card, pinned ? R.drawable.ic_close : R.drawable.ic_pushpin, getString(pinned ? R.string.unpin : R.string.pin), v -> {
             // a pinned app joins the others at the left, after them
             if (pinned) apps.unpin(a.pkg);
             else apps.moveTo(a.pkg, apps.pinnedCount());
             closeTileMenu();
             reloadShelf();
         });
-        menuRow(card, R.drawable.ic_move, "Переместить", v -> {
+        menuRow(card, R.drawable.ic_move, getString(R.string.move), v -> {
             closeTileMenu();
             startMove(a.pkg, index);
         });
         // the system's own page of the app (stop it, clear its data, permissions) and its own uninstall dialog
-        menuRow(card, R.drawable.ic_settings, "О приложении", v -> {
+        menuRow(card, R.drawable.ic_settings, getString(R.string.about_app), v -> {
             closeTileMenu();
             startSystem(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + a.pkg)));
         });
-        menuRow(card, R.drawable.ic_trash, "Удалить", v -> {
+        menuRow(card, R.drawable.ic_trash, getString(R.string.delete), v -> {
             closeTileMenu();
             startSystem(new Intent(Intent.ACTION_DELETE, android.net.Uri.parse("package:" + a.pkg)));
         });
-        menuRow(card, R.drawable.ic_close, "Отмена", v -> closeTileMenu());
+        menuRow(card, R.drawable.ic_close, getString(R.string.cancel), v -> closeTileMenu());
 
         // centred over the tile, its bottom just above the dock
         int[] at = new int[2], h = new int[2];
@@ -1206,7 +1367,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
 
     private void moveLabel() {
         focusedName.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.px(this, 22));
-        focusedName.setText(order.get(movingIndex).label + "    ← → двигать  ·  OK закрепить  ·  Back отмена");
+        focusedName.setText(order.get(movingIndex).label + "    " + getString(R.string.move_hint));
     }
 
     /** The arrows sit on the moving tile's sides, half outside it. */
@@ -1267,7 +1428,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         Object tag = overlay.getTag();
         goingBack = true;
         closeOverlay();
-        if (tag == "places" || tag == "saver" || tag == "scene" || tag == "calendar") openPanel();
+        if (tag == "places" || tag == "saver" || tag == "scene" || tag == "calendar" || tag == "language") openPanel();
         else if (tag == "remote_pick") openRemote();
         else if (tag == "telegram" || tag == "remote") openPanel();
         else goingBack = false;
@@ -1296,6 +1457,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_CENTER || e.getKeyCode() == KeyEvent.KEYCODE_ENTER) Ui.press(getCurrentFocus(), e);
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             int k = e.getKeyCode();
             if (movingPkg != null) {
@@ -1480,7 +1642,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
      */
     private LinearLayout page(FrameLayout host, String title, String status, boolean sub) {
         // the page is the same frosted glass as the dock, a shade darker so its text reads on the bright day
-        Ui.glassBackground(host, Ui.PAGE_GLASS, 0, 0);
+        Ui.glassBackground(host, Ui.DARK_GLASS, 0, 0);
         ScrollView sc = new GlideScroll(this);
         sc.setVerticalScrollBarEnabled(false);
         sc.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -1489,8 +1651,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         host.addView(sc, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout s = new LinearLayout(this);
         s.setOrientation(LinearLayout.VERTICAL);
-        // room under the last row for its cursor ring: the scroll view cuts at the content's end
-        s.setPadding(Ui.px(this, 72), 0, Ui.px(this, 72), Ui.px(this, 16));
+        // room under the last row for its growth and shadow: the scroll view cuts at the content's end
+        s.setPadding(Ui.px(this, 72), 0, Ui.px(this, 72), Ui.px(this, 40));
         sc.addView(s, new FrameLayout.LayoutParams(-1, -2));
 
         LinearLayout top = row();
@@ -1553,9 +1715,11 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     private TextView chip(String s, boolean on, View.OnClickListener click) {
         TextView t = Ui.text(this, s, 16, 600, Color.WHITE);
         t.setGravity(Gravity.CENTER);
+        // one line always: a label that wraps (a longer language) pushes the pill out of its row
+        t.setSingleLine(true);
         t.setPadding(Ui.px(this, 22), 0, Ui.px(this, 22), 0);
         t.setTextColor(Ui.ink());
-        t.setBackground(Ui.control(this, 24));
+        t.setBackground(Ui.control(this, Ui.PILL));
         t.setSelected(on);
         Ui.focusable(t);
         t.setOnClickListener(click);
@@ -1564,24 +1728,32 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     }
 
     /**
-     * A segmented switch: pills in one glass groove, the chosen one white. Returns the groove; the pill that
-     * is on carries the tag {@code "on"}.
+     * A segmented switch: pills in one glass groove. The cursor moves over them freely and OK chooses: walking
+     * past must never change a setting (a slip to the right would switch the light to night). The chosen pill
+     * is brighter glass, the one under the cursor white. Returns the groove; the pill that is on carries the
+     * tag {@code "on"}.
      */
     private LinearLayout segmented(String[] names, int on, float width, java.util.function.IntConsumer pick) {
         LinearLayout g = row();
         int p = Ui.px(this, 5);
         g.setPadding(p, p, p, p);
-        g.setBackground(Ui.glass(this, 29));
+        g.setBackground(Ui.glass(this, Ui.PILL));
         for (int i = 0; i < names.length; i++) {
             int n = i;
             TextView c = chip(names[i], i == on, v -> pick.accept(n));
-            c.setPadding(Ui.px(this, 8), 0, Ui.px(this, 8), 0);
+            c.setBackground(Ui.segment(this, Ui.PILL));
+            // the groove leaves 5 units around a segment: it grows within that, never over the rim
+            Ui.growWithin(c, 4);
             if (i == on) c.setTag("on");
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+            // as wide as its label at least, the spare room shared out: long words never wrap or get cut
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -1, 1);
             if (i > 0) lp.leftMargin = Ui.px(this, 8);
+            c.setPadding(Ui.px(this, 18), 0, Ui.px(this, 18), 0);
             g.addView(c, lp);
         }
-        g.setLayoutParams(new LinearLayout.LayoutParams(Ui.px(this, width), Ui.px(this, 58)));
+        // at least {@code width}; wider when the labels need it
+        g.setMinimumWidth(Ui.px(this, width));
+        g.setLayoutParams(new LinearLayout.LayoutParams(-2, Ui.px(this, 58)));
         return g;
     }
 
@@ -1606,7 +1778,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.CENTER_HORIZONTAL);
         card.setPadding(Ui.px(this, 32), Ui.px(this, 36), Ui.px(this, 32), Ui.px(this, 28));
-        card.setBackground(Ui.round(Ui.SURFACE, 0x29FFFFFF, 28, this));
+        Ui.glassBackground(card, Ui.DARK_GLASS, Ui.GLASS_LINE, Ui.RADIUS_DIALOG);
         card.setElevation(Ui.px(this, 24));
         card.setClipChildren(false);
         card.setClipToPadding(false);
@@ -1650,7 +1822,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 if (a != null) a.run();
             });
             btn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.px(this, 17));
-            btn.setBackground(Ui.control(this, 26));
+            btn.setBackground(Ui.control(this, Ui.PILL));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Ui.px(this, 52), 1);
             if (i > 0) lp.leftMargin = Ui.px(this, 12);
             btns.addView(btn, lp);
@@ -1659,7 +1831,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, -2);
         bl.topMargin = Ui.px(this, 24);
         card.addView(btns, bl);
-        layer.addView(card, new FrameLayout.LayoutParams(Ui.px(this, 520), -2, Gravity.CENTER));
+        // three or four buttons need more room than two, or «Переместить» breaks in the middle
+        layer.addView(card, new FrameLayout.LayoutParams(Ui.px(this, buttons.length > 2 ? 140 + 150 * buttons.length : 520), -2, Gravity.CENTER));
         // the page under the dialog must not take the cursor
         for (int i = 0; i < host.getChildCount(); i++) {
             View ch = host.getChildAt(i);
@@ -1694,66 +1867,335 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     /** Home's second page, a whole screen below it. */
     private void openPanel() {
         FrameLayout h = host();
-        String status = time.getText() + (weather.ready() ? " · " + weather.temp() + "° · закат в " + weather.sun("sunset") : "");
-        LinearLayout s = page(h, "Настройки", status, false);
+        String status = time.getText() + (weather.ready() ? " · " + weather.temp() + "° · " + getString(R.string.sunset_at, weather.sun("sunset")) : "");
+        LinearLayout s = page(h, getString(R.string.settings), status, false);
 
+        // brightness on top, the same slider as the quick panel's. Night stays in the quick panel: at the end of a
+        // slider row it was out of reach, and ←/→ on the way there kept changing the brightness
+        LinearLayout r0 = row();
+        r0.setGravity(Gravity.CENTER_VERTICAL);
+        View bright = QuickPanel.brightness(this);
+        if (!Dim.available(this)) bright.setOnClickListener(v -> needOverlay());
+        r0.addView(bright, new LinearLayout.LayoutParams(0, Ui.px(this, 72), 1));
+        LinearLayout.LayoutParams r0l = new LinearLayout.LayoutParams(-1, -2);
+        r0l.topMargin = Ui.px(this, 40);
+        s.addView(r0, r0l);
+
+        List<String> hidden = settingsHidden();
         LinearLayout r1 = row();
         LinearLayout.LayoutParams r1l = new LinearLayout.LayoutParams(-1, -2);
-        r1l.topMargin = Ui.px(this, 44);
+        r1l.topMargin = Ui.px(this, 24);
         s.addView(r1, r1l);
+        for (String id : settingsOrder(TILES)) {
+            if (hidden.contains(id)) continue;
+            LinearLayout t = settingsTile(id);
+            if (t == null) continue;
+            t.setLayoutParams(new LinearLayout.LayoutParams(0, Ui.px(this, 140), 1));
+            arrange(t, t, id, TILES);
+            addSpaced(r1, t, 20);
+        }
 
-        // the light: one card with three choices, the current one white
-        LinearLayout light = new LinearLayout(this);
-        light.setOrientation(LinearLayout.VERTICAL);
-        light.setPadding(Ui.px(this, 22), Ui.px(this, 20), Ui.px(this, 22), Ui.px(this, 20));
-        light.setBackground(Ui.glass(this, 26));
-        light.setClipChildren(false);
-        float lvl = Dim.level(this);
-        float[] levels = {0f, 0.4f, Dim.NIGHT};
-        // the panel's slider can leave the level between the presets: the nearest one is lit, the title says how much
-        int on = 0;
-        for (int i = 1; i < levels.length; i++) if (Math.abs(levels[i] - lvl) < Math.abs(levels[on] - lvl)) on = i;
-        boolean exact = Math.abs(levels[on] - lvl) < 0.01f;
-        light.addView(Ui.text(this, exact ? "Свет" : "Свет · " + Dim.brightness(this) + "%", 17, 600, Color.WHITE));
-        LinearLayout pills = segmented(new String[]{"100%", "60%", "Ночь"}, on, 246, i -> dim(levels[i]));
-        View firstPill = pills.getChildAt(on);
-        View push = new View(this);
-        light.addView(push, new LinearLayout.LayoutParams(1, 0, 1));
-        light.addView(pills, new LinearLayout.LayoutParams(-1, Ui.px(this, 58)));
-        r1.addView(light, new LinearLayout.LayoutParams(Ui.px(this, 290), Ui.px(this, 140)));
-
-        int timeout = saverMinutes();
-        addSpaced(r1, Ui.tile(this, R.drawable.ic_image, "Заставка", timeout <= 0 ? "выключена" : "iCloud · " + timeout + " мин", 148, 140, v -> openSaver()), 20);
-        addSpaced(r1, Ui.tile(this, R.drawable.ic_palm, "Сцена", SCENE_TIMES[scenePrefs().getInt("time", 0)].toLowerCase(RU), 148, 140, v -> openScene()), 20);
-        int asks = tg.people("pending").size();
-        panelAsks = asks;
-        String tgSub = tg.token().isEmpty() ? "не настроен" : asks > 0 ? asks + " " + plural(asks, "запрос", "запроса", "запросов") : "сообщения";
-        LinearLayout tgTile = Ui.tile(this, R.drawable.ic_send, "Telegram", tgSub, 148, 140, v -> openTelegram());
-        if (asks > 0) badge(tgTile, asks);
-        addSpaced(r1, tgTile, 20);
-        int events = Cal.today(this).size();
-        addSpaced(r1, Ui.tile(this, R.drawable.ic_calendar, "Календарь", Cal.sources(this).isEmpty() ? "не подключён" : events + " " + plural(events, "событие", "события", "событий"), 148, 140, v -> openCalendar()), 20);
-        addSpaced(r1, Ui.tile(this, R.drawable.ic_pin, "Город", weather.placeName(), 148, 140, v -> openPlaces()), 20);
-
-        section(s, "Система");
+        section(s, getString(R.string.system));
         LinearLayout r2 = row();
-        boolean wifi = network(NetworkCapabilities.TRANSPORT_WIFI), vpn = network(NetworkCapabilities.TRANSPORT_VPN);
-        r2.addView(Ui.round(this, R.drawable.ic_wifi, "Wi-Fi", wifi ? "подключён" : "нет сети", wifi, v -> settings(Settings.ACTION_WIFI_SETTINGS)));
-        boolean bt = bluetooth();
-        addSpaced(r2, Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", bt ? "включён" : "выключен", bt, v -> Actions.bluetooth(this)), 44);
-        addSpaced(r2, Ui.round(this, R.drawable.ic_shield, "VPN", vpn ? "включён" : "AmneziaVPN", vpn, v -> apps.open("org.amnezia.vpn")), 44);
-        addSpaced(r2, Ui.round(this, R.drawable.ic_volume, "Звук", null, false, v -> settings(Settings.ACTION_SOUND_SETTINGS)), 44);
-        int keys = new Mappings(this).codes().size();
-        addSpaced(r2, Ui.round(this, R.drawable.ic_remote, "Кнопки пульта", keys + " " + plural(keys, "кнопка", "кнопки", "кнопок"), false, v -> openRemote()), 44);
-        addSpaced(r2, Ui.round(this, R.drawable.ic_monitor, "Настройки ТВ", null, false, v -> settings(Settings.ACTION_SETTINGS)), 44);
+        boolean first = true;
+        for (String id : settingsOrder(ROUNDS)) {
+            if (hidden.contains(id)) continue;
+            LinearLayout b = settingsRound(id);
+            if (b == null) continue;
+            arrange(b.getChildAt(0), b, id, ROUNDS);
+            if (first) {
+                // the buttons are 28 units wider than their circle so long names fit: the first leans out to keep its circle in place
+                ((LinearLayout.LayoutParams) b.getLayoutParams()).leftMargin = -Ui.px(this, 14);
+                r2.addView(b);
+                first = false;
+            } else {
+                addSpaced(r2, b, 16);
+            }
+        }
+        // whatever was hidden can come back: a dashed button at the end of the row, only while something is hidden
+        if (!hidden.isEmpty()) {
+            LinearLayout back = Ui.round(this, R.drawable.ic_plus, getString(R.string.hidden_short), String.valueOf(hidden.size()), false, v -> openHiddenItems());
+            View circle = back.getChildAt(0);
+            StateListDrawable cb = new StateListDrawable();
+            cb.addState(new int[]{android.R.attr.state_focused}, Ui.round(Color.WHITE, 0, 48, this));
+            GradientDrawable cd = Ui.round(0x00FFFFFF, 0, 48, this);
+            cd.setStroke(Math.max(1, Ui.px(this, 1.5f)), 0x4DFFFFFF, Ui.px(this, 8), Ui.px(this, 6));
+            cb.addState(new int[]{}, cd);
+            circle.setBackground(cb);
+            circle.setTag("hidden");
+            if (first) r2.addView(back);
+            else addSpaced(r2, back, 16);
+        }
         s.addView(r2);
 
-        TextView hint = Ui.text(this, "↑ или Back — на главный", 15, 400, Ui.TEXT_FAINT);
+        // the long OK is hidden otherwise: the hint at the bottom says it is there
+        TextView hint = Ui.text(this, getString(movingItem != null ? R.string.settings_move_hint : R.string.hint_settings), 15, 400, Ui.TEXT_FAINT);
         FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         hl.bottomMargin = Ui.px(this, 40);
         h.addView(hint, hl);
         show(h, "panel");
-        if (firstPill != null) firstPill.requestFocus();
+        View f = panelFocus != null ? h.findViewWithTag(panelFocus) : null;
+        panelFocus = null;
+        // the cursor starts on the first tile, not on the slider: ←/→ there would change the brightness at once
+        if (f == null && r1.getChildCount() > 0) f = r1.getChildAt(0);
+        (f != null ? f : bright).requestFocus();
+    }
+
+    // ---- what the settings page shows, and in what order
+
+    private static final String[] TILES = {"saver", "scene", "telegram", "calendar", "city"};
+    private static final String[] ROUNDS = {"wifi", "bluetooth", "vpn", "sound", "remote", "language", "tv"};
+    /** The item being carried with ←/→ after «Переместить», or null. */
+    private String movingItem;
+    /** The tag to put the cursor on when the page is drawn again. */
+    private String panelFocus;
+
+    private android.content.SharedPreferences layoutPrefs() {
+        return getSharedPreferences("settings_layout", MODE_PRIVATE);
+    }
+
+    /** The row's items in the owner's order; items added in a later version go to the end. */
+    private List<String> settingsOrder(String[] all) {
+        String saved = layoutPrefs().getString(all == TILES ? "tiles" : "rounds", null);
+        List<String> out = new ArrayList<>();
+        if (saved != null) for (String id : saved.split(",")) if (java.util.Arrays.asList(all).contains(id) && !out.contains(id)) out.add(id);
+        for (String id : all) if (!out.contains(id)) out.add(id);
+        return out;
+    }
+
+    private List<String> settingsHidden() {
+        String saved = layoutPrefs().getString("hidden", "");
+        List<String> out = new ArrayList<>();
+        for (String id : saved.split(",")) if (!id.isEmpty()) out.add(id);
+        return out;
+    }
+
+    private void setHidden(String id, boolean hide) {
+        List<String> h = settingsHidden();
+        h.remove(id);
+        if (hide) h.add(id);
+        layoutPrefs().edit().putString("hidden", String.join(",", h)).apply();
+    }
+
+    private void redrawPanel(String focus) {
+        panelFocus = focus;
+        openPanel();
+    }
+
+    private LinearLayout settingsTile(String id) {
+        switch (id) {
+            case "saver": {
+                int timeout = saverMinutes();
+                return Ui.tile(this, R.drawable.ic_image, getString(R.string.saver_tile), timeout <= 0 ? getString(R.string.saver_off) : getString(R.string.saver_sub, timeout), 148, 140, v -> openSaver());
+            }
+            case "scene":
+                return Ui.tile(this, R.drawable.ic_palm, getString(R.string.scene), getString(SCENE_TIMES[scenePrefs().getInt("time", 0)]).toLowerCase(loc()), 148, 140, v -> openScene());
+            case "telegram": {
+                int asks = tg.people("pending").size();
+                panelAsks = asks;
+                String tgSub = tg.token().isEmpty() ? getString(R.string.not_set_up) : asks > 0 ? plural(R.plurals.requests, asks) : getString(R.string.messages_sub);
+                LinearLayout t = Ui.tile(this, R.drawable.ic_send, "Telegram", tgSub, 148, 140, v -> openTelegram());
+                if (asks > 0) badge(t, asks);
+                return t;
+            }
+            case "calendar": {
+                int events = Cal.today(this).size();
+                return Ui.tile(this, R.drawable.ic_calendar, getString(R.string.calendar), Cal.sources(this).isEmpty() ? getString(R.string.not_connected) : plural(R.plurals.events, events), 148, 140, v -> openCalendar());
+            }
+            case "city":
+                return Ui.tile(this, R.drawable.ic_pin, getString(R.string.city), weather.show(weather.placeName()), 148, 140, v -> openPlaces());
+            default:
+                return null;
+        }
+    }
+
+    /** A round system button; null for VPN when no VPN app is installed (then there is nothing to show). */
+    private LinearLayout settingsRound(String id) {
+        switch (id) {
+            case "wifi": {
+                boolean wifi = network(NetworkCapabilities.TRANSPORT_WIFI);
+                return Ui.round(this, R.drawable.ic_wifi, "Wi-Fi", getString(wifi ? R.string.wifi_on : R.string.wifi_off), wifi, v -> settings(Settings.ACTION_WIFI_SETTINGS));
+            }
+            case "bluetooth": {
+                boolean bt = bluetooth();
+                return Ui.round(this, R.drawable.ic_bluetooth, "Bluetooth", getString(bt ? R.string.state_on : R.string.state_off), bt, v -> Actions.bluetooth(this));
+            }
+            case "vpn": {
+                String pkg = vpnApp();
+                if (pkg == null) return null;
+                boolean vpn = network(NetworkCapabilities.TRANSPORT_VPN);
+                return Ui.round(this, R.drawable.ic_shield, "VPN", vpn ? getString(R.string.state_on) : appLabel(pkg), vpn, v -> {
+                    if (!apps.open(pkg)) settings(Settings.ACTION_VPN_SETTINGS);
+                });
+            }
+            case "sound":
+                return Ui.round(this, R.drawable.ic_volume, getString(R.string.sound), null, false, v -> settings(Settings.ACTION_SOUND_SETTINGS));
+            case "remote": {
+                int keys = new Mappings(this).codes().size();
+                return Ui.round(this, R.drawable.ic_remote, getString(R.string.remote_buttons), plural(R.plurals.keys, keys), false, v -> openRemote());
+            }
+            case "language":
+                return Ui.round(this, R.drawable.ic_languages, getString(R.string.language), Lang.label(this, Lang.get(this)), false, v -> openLanguage());
+            case "tv":
+                return Ui.round(this, R.drawable.ic_monitor, getString(R.string.tv_settings), null, false, v -> settings(Settings.ACTION_SETTINGS));
+            default:
+                return null;
+        }
+    }
+
+    private String itemName(String id) {
+        switch (id) {
+            case "saver": return getString(R.string.saver_tile);
+            case "scene": return getString(R.string.scene);
+            case "telegram": return "Telegram";
+            case "calendar": return getString(R.string.calendar);
+            case "city": return getString(R.string.city);
+            case "wifi": return "Wi-Fi";
+            case "bluetooth": return "Bluetooth";
+            case "vpn": return "VPN";
+            case "sound": return getString(R.string.sound);
+            case "remote": return getString(R.string.remote_buttons);
+            case "language": return getString(R.string.language);
+            default: return getString(R.string.tv_settings);
+        }
+    }
+
+    /**
+     * A long OK on a settings item offers to move or hide it (and, for VPN with several apps, which one to open);
+     * while it is being moved, ←/→ carry it along its row and OK or Back put it down.
+     */
+    private void arrange(View focusable, View item, String id, String[] row) {
+        focusable.setTag("set_" + id);
+        focusable.setLongClickable(true);
+        boolean moving = id.equals(movingItem);
+        if (moving) item.setSelected(true);
+        focusable.setOnLongClickListener(v -> {
+            if (movingItem != null) return true;
+            List<String> labels = new ArrayList<>();
+            List<Runnable> acts = new ArrayList<>();
+            labels.add(getString(R.string.move));
+            acts.add(() -> {
+                movingItem = id;
+                redrawPanel("set_" + id);
+            });
+            labels.add(getString(R.string.hide));
+            acts.add(() -> {
+                setHidden(id, true);
+                redrawPanel(null);
+            });
+            if ("vpn".equals(id) && vpnApps().size() > 1) {
+                labels.add(getString(R.string.vpn_choose));
+                acts.add(this::chooseVpn);
+            }
+            labels.add(getString(R.string.cancel));
+            acts.add(null);
+            dialog(R.drawable.ic_move, itemName(id), getString(R.string.item_menu_text), null,
+                    labels.toArray(new String[0]), acts.toArray(new Runnable[0]), 0);
+            return true;
+        });
+        if (!moving) return;
+        View.OnClickListener put = v -> {
+            movingItem = null;
+            redrawPanel("set_" + id);
+        };
+        focusable.setOnClickListener(put);
+        focusable.setOnKeyListener((v, k, e) -> {
+            if (k == KeyEvent.KEYCODE_BACK) {
+                if (e.getAction() == KeyEvent.ACTION_UP) put.onClick(v);
+                return true;
+            }
+            if (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+            if (k != KeyEvent.KEYCODE_DPAD_LEFT && k != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
+            if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+            // swap with the next visible neighbour in that direction
+            List<String> order = settingsOrder(row);
+            List<String> hiddenNow = settingsHidden();
+            int i = order.indexOf(id), step = k == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1, j = i + step;
+            while (j >= 0 && j < order.size() && (hiddenNow.contains(order.get(j)) || ("vpn".equals(order.get(j)) && vpnApp() == null))) j += step;
+            if (j < 0 || j >= order.size()) return true;
+            java.util.Collections.swap(order, i, j);
+            layoutPrefs().edit().putString(row == TILES ? "tiles" : "rounds", String.join(",", order)).apply();
+            redrawPanel("set_" + id);
+            return true;
+        });
+    }
+
+    /** The hidden settings items, each one OK away from coming back. */
+    private void openHiddenItems() {
+        FrameLayout h = host();
+        LinearLayout s = page(h, getString(R.string.hidden_title), getString(R.string.hidden_items_sub), true);
+        View first = null;
+        boolean top = true;
+        for (String id : settingsHidden()) {
+            LinearLayout r = row();
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(Ui.px(this, 22), 0, Ui.px(this, 22), 0);
+            r.setBackground(Ui.control(this, 24));
+            r.addView(Ui.text(this, itemName(id), 17, 600, Color.WHITE), new LinearLayout.LayoutParams(0, -2, 1));
+            r.addView(Ui.text(this, getString(R.string.show_again), 16, 500, Ui.TEXT_DIM));
+            Ui.focusable(r);
+            r.setOnClickListener(v -> {
+                setHidden(id, false);
+                goingBack = true;
+                closeOverlay();
+                redrawPanel(settingsHidden().isEmpty() ? null : "hidden");
+            });
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Ui.px(this, 640), Ui.px(this, 64));
+            rl.topMargin = Ui.px(this, top ? 32 : 10);
+            s.addView(r, rl);
+            top = false;
+            if (first == null) first = r;
+        }
+        show(h, "hidden_items");
+        if (first != null) first.requestFocus();
+    }
+
+    // ---- VPN: whichever VPN app is installed
+
+    /** Installed apps with a VPN service (any VPN app declares one), this launcher left out. */
+    private List<String> vpnApps() {
+        List<String> out = new ArrayList<>();
+        try {
+            for (android.content.pm.ResolveInfo r : getPackageManager().queryIntentServices(new Intent("android.net.VpnService"), 0)) {
+                String pkg = r.serviceInfo.packageName;
+                if (!out.contains(pkg) && !pkg.equals(getPackageName())) out.add(pkg);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** The VPN app the button opens: the one chosen, else the only (or first) one installed; null for none. */
+    private String vpnApp() {
+        List<String> all = vpnApps();
+        if (all.isEmpty()) return null;
+        String chosen = layoutPrefs().getString("vpn", null);
+        return chosen != null && all.contains(chosen) ? chosen : all.get(0);
+    }
+
+    private void chooseVpn() {
+        List<String> all = vpnApps();
+        int n = Math.min(all.size(), 4);
+        String[] names = new String[n + 1];
+        Runnable[] acts = new Runnable[n + 1];
+        for (int i = 0; i < n; i++) {
+            String pkg = all.get(i);
+            names[i] = appLabel(pkg);
+            acts[i] = () -> {
+                layoutPrefs().edit().putString("vpn", pkg).apply();
+                redrawPanel("set_vpn");
+            };
+        }
+        names[n] = getString(R.string.cancel);
+        root.post(() -> dialog(R.drawable.ic_shield, "VPN", getString(R.string.vpn_choose_text), null, names, acts, Math.max(0, all.indexOf(vpnApp()))));
+    }
+
+    private String appLabel(String pkg) {
+        try {
+            return getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(pkg, 0)).toString();
+        } catch (Exception e) {
+            return pkg;
+        }
     }
 
     /** Whether the active network goes over {@code transport} (Wi-Fi, VPN). */
@@ -1795,24 +2237,17 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
 
     private int panelAsks;
 
-    private static String plural(int n, String one, String few, String many) {
-        int m10 = n % 10, m100 = n % 100;
-        if (m10 == 1 && m100 != 11) return one;
-        if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-        return many;
+    /** "3 events": the count with its noun in the form the language wants (the forms live in res/values*). */
+    private String plural(int id, int n) {
+        return getResources().getQuantityString(id, n, n);
     }
 
-    private void dim(float level) {
-        Dim.set(this, level);
-        closeOverlay();
-        openPanel();
-        if (level > 0 && !Dim.available(this)) {
-            // the stick can't dim its backlight; the dark layer needs a permission granted once over ADB
-            dialog(R.drawable.ic_sun_dim, "Затемнение не включилось",
-                    "Телевизор сам не меняет подсветку, поэтому лончер кладёт тёмный слой поверх экрана. На это нужно разрешение, его дают один раз с компьютера:",
-                    "adb shell appops set " + getPackageName() + " SYSTEM_ALERT_WINDOW allow",
-                    new String[]{"Понятно"}, new Runnable[]{null}, 0);
-        }
+    /** The stick can't dim its backlight; the dark layer needs a permission granted once over ADB. */
+    private void needOverlay() {
+        dialog(R.drawable.ic_sun_dim, getString(R.string.dim_fail_title),
+                getString(R.string.dim_fail_text),
+                "adb shell appops set " + getPackageName() + " SYSTEM_ALERT_WINDOW allow",
+                new String[]{getString(R.string.got_it)}, new Runnable[]{null}, 0);
     }
 
     private void startDream() {
@@ -1828,9 +2263,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             }
         }
         if (!installed) {
-            dialog(R.drawable.ic_image, "Заставка не выбрана",
-                    "Выбранной в системе заставки нет на телевизоре. Поставьте Photo Prints и выберите её в настройках ТВ: «Экран и звук» → «Заставка».",
-                    null, new String[]{"Понятно"}, new Runnable[]{null}, 0);
+            dialog(R.drawable.ic_image, getString(R.string.saver_missing_title),
+                    getString(R.string.saver_missing_text),
+                    null, new String[]{getString(R.string.got_it)}, new Runnable[]{null}, 0);
             return;
         }
         closeOverlay();
@@ -1869,10 +2304,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
 
     /** The two commands that let the launcher change the TV's screensaver settings, run once from a computer. */
     private void needSettingsAccess() {
-        dialog(R.drawable.ic_image, "Нужен доступ к настройкам",
-                "Заставку и её время меняет система. Разрешите это лончеру один раз с компьютера:",
+        dialog(R.drawable.ic_image, getString(R.string.settings_access_title),
+                getString(R.string.settings_access_text),
                 "adb shell pm grant " + getPackageName() + " android.permission.WRITE_SECURE_SETTINGS\nadb shell appops set " + getPackageName() + " WRITE_SETTINGS allow",
-                new String[]{"Понятно"}, new Runnable[]{null}, 0);
+                new String[]{getString(R.string.got_it)}, new Runnable[]{null}, 0);
     }
 
     private void setSaverMinutes(int minutes) {
@@ -1896,7 +2331,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
      */
     private void openSaver() {
         FrameLayout h = host();
-        LinearLayout s = page(h, "Заставка", "фото из iCloud, когда ТВ простаивает", true);
+        LinearLayout s = page(h, getString(R.string.saver), getString(R.string.saver_page_sub), true);
         LinearLayout top = row();
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-1, -2);
         tl.topMargin = Ui.px(this, 32);
@@ -1918,10 +2353,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout ht = new LinearLayout(this);
         ht.setOrientation(LinearLayout.VERTICAL);
         String name = Saver.albumName(this);
-        ht.addView(Ui.text(this, name.isEmpty() ? "Общий альбом iCloud" : "Общий альбом «" + name + "»", 18, 600, Color.WHITE));
+        ht.addView(Ui.text(this, name.isEmpty() ? getString(R.string.album_shared) : getString(R.string.album_shared_named, name), 18, 600, Color.WHITE));
         int n = Saver.photos(this).size();
         long at = Saver.syncedAt(this);
-        TextView hs = label(n + " " + plural(n, "фото", "фото", "фото") + (at == 0 ? " · ещё не загружался" : " · обновлено " + when(at / 1000)));
+        TextView hs = label(plural(R.plurals.photos, n) + " · " + (at == 0 ? getString(R.string.album_never) : getString(R.string.album_updated, when(at / 1000))));
         LinearLayout.LayoutParams hsl = new LinearLayout.LayoutParams(-2, -2);
         hsl.topMargin = Ui.px(this, 3);
         ht.addView(hs, hsl);
@@ -1930,10 +2365,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         head.addView(ht, htl);
         album.addView(head);
         LinearLayout act = row();
-        TextView now = chip("Показать сейчас", false, v -> startActivity(new Intent(this, SaverActivity.class)));
+        TextView now = chip(getString(R.string.show_now), false, v -> startActivity(new Intent(this, SaverActivity.class)));
         act.addView(now);
         if (!saverIsOurs()) {
-            addSpaced(act, chip("Сделать заставкой ТВ", false, v -> {
+            addSpaced(act, chip(getString(R.string.make_saver), false, v -> {
                 try {
                     Settings.Secure.putString(getContentResolver(), "screensaver_components", new android.content.ComponentName(this, HomeDream.class).flattenToString());
                     Settings.Secure.putInt(getContentResolver(), "screensaver_enabled", 1);
@@ -1953,8 +2388,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         how.setOrientation(LinearLayout.VERTICAL);
         how.setPadding(Ui.px(this, 24), Ui.px(this, 20), Ui.px(this, 24), Ui.px(this, 20));
         how.setBackground(Ui.glass(this, 26));
-        how.addView(Ui.text(this, "Другой альбом", 15, 600, Color.WHITE));
-        TextView ht2 = label("Фото на iPhone → общий альбом → «Пригласить» → «Общедоступный веб-сайт». Отправьте ссылку боту в Telegram — пультом ничего набирать не нужно.");
+        how.addView(Ui.text(this, getString(R.string.other_album), 15, 600, Color.WHITE));
+        TextView ht2 = label(getString(R.string.album_howto));
         ht2.setLineSpacing(0, 1.35f);
         LinearLayout.LayoutParams h2l = new LinearLayout.LayoutParams(-2, -2);
         h2l.topMargin = Ui.px(this, 8);
@@ -1963,9 +2398,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         howl.leftMargin = Ui.px(this, 24);
         top.addView(how, howl);
 
-        section(s, "Раскладка");
+        section(s, getString(R.string.layout));
         LinearLayout layouts = row();
-        String[] ln = {"Одно фото", "Два рядом", "Три", "Меняется сама"};
+        String[] ln = {getString(R.string.layout_one), getString(R.string.layout_two), getString(R.string.layout_three), getString(R.string.layout_auto)};
         int cur = Saver.layout(this);
         View first = null;
         for (int i = 0; i < 4; i++) {
@@ -2007,9 +2442,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout every = new LinearLayout(this);
         every.setOrientation(LinearLayout.VERTICAL);
         every.setClipChildren(false);
-        every.addView(Ui.caps(this, "Смена фото"));
+        every.addView(Ui.caps(this, getString(R.string.change_every)));
         int e = Saver.every(this), eOn = e <= 10 ? 0 : e <= 30 ? 1 : 2;
-        LinearLayout es = segmented(new String[]{"10 секунд", "30 секунд", "1 минута"}, eOn, 540, i -> {
+        LinearLayout es = segmented(new String[]{getString(R.string.sec_10), getString(R.string.sec_30), getString(R.string.min_1)}, eOn, 540, i -> {
             Saver.setEvery(this, Saver.EVERY[i]);
             closeOverlay();
             openSaver();
@@ -2021,10 +2456,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         LinearLayout after = new LinearLayout(this);
         after.setOrientation(LinearLayout.VERTICAL);
         after.setClipChildren(false);
-        after.addView(Ui.caps(this, "Включать, если пульт не трогали"));
+        after.addView(Ui.caps(this, getString(R.string.start_after)));
         int m = saverMinutes(), mOn = m <= 0 ? 2 : m <= 5 ? 0 : 1;
         int[] mins = {5, 15, 0};
-        LinearLayout as = segmented(new String[]{"5 минут", "15 минут", "Никогда"}, mOn, 540, i -> setSaverMinutes(mins[i]));
+        LinearLayout as = segmented(new String[]{getString(R.string.min_5), getString(R.string.min_15), getString(R.string.never)}, mOn, 540, i -> setSaverMinutes(mins[i]));
         LinearLayout.LayoutParams asl = new LinearLayout.LayoutParams(Ui.px(this, 540), Ui.px(this, 58));
         asl.topMargin = Ui.px(this, 14);
         after.addView(as, asl);
@@ -2088,7 +2523,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     // ---- the scene
 
     /** By the stored value of "time": morning came last, so the older values keep their meaning. */
-    private static final String[] SCENE_TIMES = {"По солнцу", "День", "Закат", "Ночь", "Утро"};
+    private static final int[] SCENE_TIMES = {R.string.time_sun, R.string.time_day, R.string.time_sunset, R.string.night, R.string.time_morning};
     /** The order on the page: the stored value at each position. */
     private static final int[] SCENE_ORDER = {0, 4, 1, 2, 3};
 
@@ -2141,24 +2576,24 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
      */
     private void openScene() {
         FrameLayout h = host();
-        LinearLayout s = page(h, "Сцена", "бухта Ката за главным экраном", true);
+        LinearLayout s = page(h, getString(R.string.scene), getString(R.string.scene_sub), true);
         // no glass here: the bay itself is what the page shows
         h.setBackgroundColor(0x8C0C1016);
         android.content.SharedPreferences p = scenePrefs();
         boolean animated = sceneAnimated();
 
-        section(s, "Анимация");
-        LinearLayout anim = segmented(new String[]{"Включена", "Выключена"}, animated ? 0 : 1, 420, i -> {
+        section(s, getString(R.string.animation));
+        LinearLayout anim = segmented(new String[]{getString(R.string.anim_on), getString(R.string.anim_off)}, animated ? 0 : 1, 420, i -> {
             p.edit().putBoolean("animated", i == 0).apply();
             applyScene();
             redrawScene();
         });
         s.addView(anim);
-        section(s, "Время суток");
+        section(s, getString(R.string.time_of_day));
         String[] times = new String[SCENE_ORDER.length];
         int timeOn = 0;
         for (int i = 0; i < times.length; i++) {
-            times[i] = SCENE_TIMES[SCENE_ORDER[i]];
+            times[i] = getString(SCENE_TIMES[SCENE_ORDER[i]]);
             if (SCENE_ORDER[i] == p.getInt("time", 0)) timeOn = i;
         }
         LinearLayout time = segmented(times, timeOn, 640, i -> {
@@ -2167,9 +2602,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             redrawScene();
         });
         s.addView(time);
-        TextView note = label(animated
-                ? "Короткое видео по каждой картинке крутится по кругу и сменяется по времени суток. «По солнцу» — по восходу и закату в выбранном городе."
-                : "Картинки стоят без движения и меняются по времени суток, плавно за полчаса. Так стик меньше занят. «По солнцу» — по восходу и закату в выбранном городе.");
+        TextView note = label(getString(animated ? R.string.scene_note_video : R.string.scene_note_still));
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(Ui.px(this, 640), -2);
         nl.topMargin = Ui.px(this, 32);
         s.addView(note, nl);
@@ -2199,11 +2632,11 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         FrameLayout h = host();
         List<Cal.Source> list = Cal.sources(this);
         int count = Cal.today(this).size();
-        LinearLayout s = page(h, "Календарь", list.isEmpty() ? "" : "сегодня " + count + " " + plural(count, "событие", "события", "событий"), true);
-        section(s, "Календари");
+        LinearLayout s = page(h, getString(R.string.calendar), list.isEmpty() ? "" : plural(R.plurals.today_events, count), true);
+        section(s, getString(R.string.calendars));
         View first = null;
         if (list.isEmpty()) {
-            TextView e = label("Пока ни одного. Как подключить — справа.");
+            TextView e = label(getString(R.string.cal_none));
             s.addView(e);
         }
         for (Cal.Source src : list) {
@@ -2223,10 +2656,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, -2, 1);
             nl.leftMargin = Ui.px(this, 14);
             r.addView(n, nl);
-            TextView st = Ui.text(this, src.shown ? "показывать" : "скрыт", 15, 600, Color.WHITE);
-            st.setPadding(Ui.px(this, 14), Ui.px(this, 8), Ui.px(this, 14), Ui.px(this, 8));
-            st.setBackground(src.shown ? Ui.round(Ui.ON, 0, 18, this) : Ui.round(0x1AFFFFFF, 0, 18, this));
-            if (!src.shown) st.setAlpha(0.7f);
+            // the state in words, the way tvOS settings rows show a value
+            TextView st = Ui.text(this, getString(src.shown ? R.string.cal_shown : R.string.cal_hidden), 16, 500, src.shown ? Color.WHITE : Ui.TEXT_DIM);
             r.addView(st);
             Ui.focusable(r);
             r.setTag("cal_" + src.url);
@@ -2239,8 +2670,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 if (again != null) again.requestFocus();
             });
             r.setOnLongClickListener(v -> {
-                dialog(R.drawable.ic_calendar, "Убрать «" + src.name + "»?", "Его события перестанут показываться на главном.", null,
-                        new String[]{"Убрать", "Отмена"}, new Runnable[]{() -> {
+                dialog(R.drawable.ic_calendar, getString(R.string.remove_cal_title, src.name), getString(R.string.remove_cal_text), null,
+                        new String[]{getString(R.string.remove), getString(R.string.cancel)}, new Runnable[]{() -> {
                             Cal.remove(this, src.url);
                             closeOverlay();
                             openCalendar();
@@ -2253,29 +2684,28 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             if (first == null) first = r;
         }
         if (!list.isEmpty()) {
-            TextView hint = Ui.text(this, "OK — показать или скрыть, удержание OK — убрать", 15, 400, Ui.TEXT_FAINT);
+            TextView hint = Ui.text(this, getString(R.string.cal_hint), 15, 400, Ui.TEXT_FAINT);
             LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
             hl.topMargin = Ui.px(this, 10);
             s.addView(hint, hl);
         }
-        section(s, "На главном");
-        LinearLayout mode = segmented(new String[]{"Только важные", "Все на сегодня", "Не показывать"}, Cal.mode(this), 620, i -> {
+        section(s, getString(R.string.on_home));
+        LinearLayout mode = segmented(new String[]{getString(R.string.cal_mode_important), getString(R.string.cal_mode_all), getString(R.string.cal_mode_none)}, Cal.mode(this), 620, i -> {
             Cal.setMode(this, i);
             renderToday();
             closeOverlay();
             openCalendar();
         });
         s.addView(mode);
-        TextView imp = label("Важные — события с напоминанием. До трёх под погодой, прошедшие исчезают.");
+        TextView imp = label(getString(R.string.cal_important));
         LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(Ui.px(this, 620), -2);
         il.topMargin = Ui.px(this, 12);
         s.addView(imp, il);
 
         String bot = tg.botName();
-        qrBlock(h, bot.isEmpty() ? null : "https://t.me/" + bot, "Отправьте ссылку боту",
-                "Google Календарь. В приложении ссылки нет: откройте calendar.google.com в Chrome или Safari, включите версию для ПК → Настройки → ваш календарь → «Интеграция календаря» → «Секретный адрес в формате iCal».\n\n"
-                        + "Календарь iPhone. «Календари» → ⓘ у календаря iCloud → «Общедоступный календарь» → «Поделиться ссылкой».\n\n"
-                        + "Скопируйте ссылку и пришлите боту" + (bot.isEmpty() ? "." : " @" + bot + "."));
+        qrBlock(h, bot.isEmpty() ? null : "https://t.me/" + bot, getString(R.string.send_link_bot),
+                getString(R.string.cal_howto_google) + "\n\n" + getString(R.string.cal_howto_apple) + "\n\n"
+                        + (bot.isEmpty() ? getString(R.string.cal_send_bot) : getString(R.string.cal_send_bot_named, bot)));
         show(h, "calendar");
         if (first != null) first.requestFocus();
         else if (mode.findViewWithTag("on") != null) mode.findViewWithTag("on").requestFocus();
@@ -2323,7 +2753,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     private void openWeather() {
         if (!weather.ready()) return;
         FrameLayout h = host();
-        LinearLayout s = page(h, weather.placeTitle(), "обновлено в " + new SimpleDateFormat("HH:mm", RU).format(new Date(weather.updatedAt())), false);
+        LinearLayout s = page(h, weather.placeTitle(), getString(R.string.updated_at, Lang.clock(this, new Date(weather.updatedAt()))), false);
         LinearLayout now = row();
         now.setGravity(Gravity.CENTER_VERTICAL);
         TextView temp = Ui.text(this, weather.temp() + "°", 140, 200, Color.WHITE);
@@ -2331,9 +2761,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         now.addView(temp);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(Ui.text(this, cap(Weather.describe(weather.code())), 28, 600, Color.WHITE));
+        col.addView(Ui.text(this, cap(weather.describe(weather.code())), 28, 600, Color.WHITE));
         Integer sea = weather.sea();
-        String line = "ощущается " + weather.feels() + "°" + (sea != null ? " · море " + sea + "°" : "") + " · закат " + weather.sun("sunset");
+        String line = getString(R.string.feels_like, weather.feels()) + (sea != null ? " · " + getString(R.string.sea_temp, sea) : "") + " · " + getString(R.string.sunset_time, weather.sun("sunset"));
         TextView ln = Ui.text(this, line, 17, 400, 0xB3FFFFFF);
         LinearLayout.LayoutParams lnl = new LinearLayout.LayoutParams(-2, -2);
         lnl.topMargin = Ui.px(this, 8);
@@ -2361,7 +2791,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         nl.topMargin = Ui.px(this, 24);
         s.addView(now, nl);
 
-        section(s, "Сегодня");
+        section(s, getString(R.string.today));
         LinearLayout hours = row();
         for (String[] hr : weather.hours(6, 2)) {
             LinearLayout c = new LinearLayout(this);
@@ -2380,7 +2810,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         }
         s.addView(hours, new LinearLayout.LayoutParams(-1, -2));
 
-        section(s, "Дальше");
+        section(s, getString(R.string.next_days));
         LinearLayout days = row();
         View first = null;
         for (String[] d : weather.days(4)) {
@@ -2406,15 +2836,15 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         if (first != null) first.requestFocus();
     }
 
-    private static String cap(String s) {
-        return s.isEmpty() ? s : s.substring(0, 1).toUpperCase(RU) + s.substring(1);
+    private String cap(String s) {
+        return s.isEmpty() ? s : s.substring(0, 1).toUpperCase(loc()) + s.substring(1);
     }
 
     // ---- places
 
     private void openPlaces() {
         FrameLayout h = host();
-        LinearLayout s = page(h, "Город для погоды", "сейчас: " + weather.placeName(), true);
+        LinearLayout s = page(h, getString(R.string.places_title), getString(R.string.places_now, weather.show(weather.placeName())), true);
 
         LinearLayout sr = row();
         sr.setGravity(Gravity.CENTER_VERTICAL);
@@ -2431,7 +2861,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         EditText q = new EditText(this);
         q.setTag("query");
         q.setSingleLine(true);
-        q.setHint("Найти город");
+        q.setHint(getString(R.string.find_city));
         q.setHintTextColor(0x99FFFFFF);
         q.setTextColor(Color.WHITE);
         q.setTypeface(Ui.font(this, 500));
@@ -2448,7 +2878,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             Ui.grow(field, has);
         });
         sr.addView(field, new LinearLayout.LayoutParams(Ui.px(this, 560), Ui.px(this, 56)));
-        TextView go = chip("Найти", false, null);
+        TextView go = chip(getString(R.string.find), false, null);
         go.setLayoutParams(new LinearLayout.LayoutParams(-2, Ui.px(this, 56)));
         addSpaced(sr, go, 12);
         TextView status = label("");
@@ -2463,10 +2893,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         Runnable search = () -> {
             String text = q.getText().toString().trim();
             if (text.isEmpty()) return;
-            status.setText("Ищу…");
+            status.setText(getString(R.string.searching));
             weather.search(text, found -> {
                 results.removeAllViews();
-                status.setText(found.isEmpty() ? "Ничего не нашлось" : "");
+                status.setText(found.isEmpty() ? getString(R.string.nothing_found) : "");
                 for (String[] p : found) addPlace(results, p[0], p[3], p[1], p[2]);
                 unclip(results);
                 if (results.getChildCount() > 0) results.getChildAt(0).requestFocus();
@@ -2486,7 +2916,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         boolean inList = false;
         for (String[] p : Weather.CITIES) inList |= p[0].equals(weather.placeName());
         if (recent.size() > 1 || !inList) {
-            section(s, "Недавние");
+            section(s, getString(R.string.recent));
             GridLayout rg = new GridLayout(this);
             rg.setColumnCount(3);
             for (String[] p : recent) {
@@ -2495,7 +2925,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             }
             s.addView(rg);
         }
-        section(s, "Города");
+        section(s, getString(R.string.cities));
         GridLayout cities = new GridLayout(this);
         cities.setColumnCount(3);
         for (String[] p : Weather.CITIES) {
@@ -2516,11 +2946,11 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         c.setBackground(Ui.control(this, 22));
         LinearLayout txt = new LinearLayout(this);
         txt.setOrientation(LinearLayout.VERTICAL);
-        TextView n = Ui.text(this, name, 18, 600, Color.WHITE);
+        TextView n = Ui.text(this, weather.show(name), 18, 600, Color.WHITE);
         n.setSingleLine(true);
         n.setEllipsize(TextUtils.TruncateAt.END);
         txt.addView(n);
-        TextView w = Ui.text(this, where, 15, 400, Ui.TEXT_DIM);
+        TextView w = Ui.text(this, weather.showRegion(where), 15, 400, Ui.TEXT_DIM);
         w.setSingleLine(true);
         w.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
@@ -2549,6 +2979,76 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         return c;
     }
 
+    // ---- language
+
+    /** The interface language: each named in itself, so it can be found whatever the screen says now, and "as in system". */
+    private void openLanguage() {
+        FrameLayout h = host();
+        LinearLayout s = page(h, getString(R.string.language), getString(R.string.lang_page_sub), true);
+        String cur = Lang.get(this);
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(3);
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, -2);
+        gl.topMargin = Ui.px(this, 32);
+        s.addView(grid, gl);
+        View current = null;
+        for (int i = 0; i <= Lang.CODES.length; i++) {
+            String code = i < Lang.CODES.length ? Lang.CODES[i] : Lang.SYSTEM;
+            View c = addLanguage(grid, code, code.equals(cur));
+            if (code.equals(cur)) current = c;
+        }
+        show(h, "language");
+        if (current != null) current.requestFocus();
+    }
+
+    /** One language to pick: its own name, the check on the one in use; "as in system" names what that is now. */
+    private View addLanguage(GridLayout grid, String code, boolean chosen) {
+        LinearLayout c = new LinearLayout(this);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setPadding(Ui.px(this, 24), 0, Ui.px(this, 22), 0);
+        c.setBackground(Ui.control(this, 22));
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        boolean system = Lang.SYSTEM.equals(code);
+        TextView n = Ui.text(this, system ? getString(R.string.lang_system) : Lang.label(this, code), 18, 600, Color.WHITE);
+        n.setSingleLine(true);
+        n.setEllipsize(TextUtils.TruncateAt.END);
+        txt.addView(n);
+        if (system) {
+            TextView w = Ui.text(this, Lang.label(this, Lang.ofSystem()), 15, 400, Ui.TEXT_DIM);
+            w.setSingleLine(true);
+            w.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, -2);
+            wl.topMargin = Ui.px(this, 3);
+            txt.addView(w, wl);
+        }
+        c.addView(txt, new LinearLayout.LayoutParams(0, -2, 1));
+        if (chosen) {
+            ImageView ck = new ImageView(this);
+            ck.setImageResource(R.drawable.ic_check);
+            c.addView(ck, new LinearLayout.LayoutParams(Ui.px(this, 22), Ui.px(this, 22)));
+        }
+        Ui.focusable(c);
+        c.setOnClickListener(v -> {
+            if (chosen) {
+                back();
+                return;
+            }
+            Lang.set(this, code);
+            // Android 11 has no per-app locale: the screens are built from resources once, so build them again
+            reopenLanguage = restarting = true;
+            recreate();
+        });
+        int i = grid.getChildCount();
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        lp.width = Math.round((getResources().getDisplayMetrics().widthPixels - Ui.px(this, 144) - Ui.px(this, 18) * 2) / 3f);
+        lp.height = Ui.px(this, 72);
+        lp.rightMargin = i % 3 == 2 ? 0 : Ui.px(this, 18);
+        lp.topMargin = i < 3 ? 0 : Ui.px(this, 14);
+        grid.addView(c, lp);
+        return c;
+    }
+
     // ---- remote buttons
 
     /** Which app the remote's app buttons open, on a press and on a hold. Replaces the Remote Keys app. */
@@ -2557,7 +3057,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         Mappings mp = new Mappings(this);
         FrameLayout h = host();
         boolean logs = checkSelfPermission("android.permission.READ_LOGS") == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        LinearLayout s = page(h, "Кнопки пульта", logs ? "нажатие открывает одно, удержание — другое" : "нет доступа к журналу: выдайте READ_LOGS через ADB", true);
+        LinearLayout s = page(h, getString(R.string.remote_buttons), getString(logs ? R.string.remote_sub_ok : R.string.remote_sub_nologs), true);
         View first = null;
         boolean top = true;
         for (int code : mp.codes()) {
@@ -2568,22 +3068,22 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             LinearLayout name = new LinearLayout(this);
             name.setOrientation(LinearLayout.VERTICAL);
             name.addView(Ui.text(this, Mappings.name(code), 18, 600, Color.WHITE));
-            TextView sub = label(code == Mappings.NETFLIX || code == Mappings.PRIME ? "кнопка на пульте" : "код " + code);
+            TextView sub = label(code == Mappings.NETFLIX || code == Mappings.PRIME ? getString(R.string.remote_button) : getString(R.string.key_code, code));
             LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2);
             sl.topMargin = Ui.px(this, 4);
             name.addView(sub, sl);
             r.addView(name, new LinearLayout.LayoutParams(Ui.px(this, 300), -2));
-            View tap = appChoice("Нажатие", mp.tap(code), v -> pickApp(code, false));
+            View tap = appChoice(getString(R.string.tap), mp.tap(code), v -> pickApp(code, false));
             tap.setTag("tap_" + code);
             addSpaced(r, tap, 16);
-            View hold = appChoice("Удержание", mp.hold(code), v -> pickApp(code, true));
+            View hold = appChoice(getString(R.string.hold), mp.hold(code), v -> pickApp(code, true));
             hold.setTag("hold_" + code);
             addSpaced(r, hold, 16);
             r.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
             if (code != Mappings.NETFLIX && code != Mappings.PRIME) {
-                TextView rm = chip("Убрать", false, v -> dialog(R.drawable.ic_remote, "Убрать кнопку " + Mappings.name(code) + "?",
-                        "Нажатие и удержание перестанут открывать приложения.", null,
-                        new String[]{"Убрать", "Отмена"}, new Runnable[]{() -> {
+                TextView rm = chip(getString(R.string.remove), false, v -> dialog(R.drawable.ic_remote, getString(R.string.remove_button_title, Mappings.name(code)),
+                        getString(R.string.remove_button_text), null,
+                        new String[]{getString(R.string.remove), getString(R.string.cancel)}, new Runnable[]{() -> {
                             mp.remove(code);
                             closeOverlay();
                             openRemote();
@@ -2602,9 +3102,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         add.setGravity(Gravity.CENTER_VERTICAL);
         add.setPadding(Ui.px(this, 24), 0, Ui.px(this, 24), 0);
         StateListDrawable ab = new StateListDrawable();
-        GradientDrawable af = Ui.round(Ui.GLASS_FOCUS, 0, 26, this);
-        af.setStroke(Ui.px(this, 3), Color.WHITE);
-        ab.addState(new int[]{android.R.attr.state_focused}, af);
+        // under the cursor it is white like every control; the dashes are only for the resting state
+        ab.addState(new int[]{android.R.attr.state_focused}, Ui.round(Color.WHITE, 0, 26, this));
         GradientDrawable ad = Ui.round(0x00FFFFFF, 0, 26, this);
         ad.setStroke(Math.max(1, Ui.px(this, 1.5f)), 0x4DFFFFFF, Ui.px(this, 8), Ui.px(this, 6));
         ab.addState(new int[]{}, ad);
@@ -2614,8 +3113,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         add.addView(plus, new LinearLayout.LayoutParams(Ui.px(this, 26), Ui.px(this, 26)));
         LinearLayout at = new LinearLayout(this);
         at.setOrientation(LinearLayout.VERTICAL);
-        at.addView(Ui.text(this, "Добавить кнопку", 17, 600, Color.WHITE));
-        TextView as = label("потом нажмите её на пульте, Back — отмена");
+        at.addView(Ui.text(this, getString(R.string.add_button), 17, 600, Color.WHITE));
+        TextView as = label(getString(R.string.add_button_sub));
         LinearLayout.LayoutParams asl = new LinearLayout.LayoutParams(-2, -2);
         asl.topMargin = Ui.px(this, 3);
         at.addView(as, asl);
@@ -2625,9 +3124,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         add.setTag("learn");
         Ui.focusable(add);
         add.setOnClickListener(v -> {
-            dialog(R.drawable.ic_remote, "Нажмите кнопку на пульте",
-                    "Любую, кроме стрелок, OK, Back и Home. Потом выберете, что она открывает.", null,
-                    new String[]{"Отмена"}, new Runnable[]{() -> KeyWatchService.learner = null}, 0);
+            dialog(R.drawable.ic_remote, getString(R.string.press_title),
+                    getString(R.string.press_text), null,
+                    new String[]{getString(R.string.cancel)}, new Runnable[]{() -> KeyWatchService.learner = null}, 0);
             KeyWatchService.learner = c -> {
                 // the keys that drive this screen can't be taken over
                 if (c == KeyEvent.KEYCODE_BACK || c == KeyEvent.KEYCODE_DPAD_CENTER || c == KeyEvent.KEYCODE_ENTER
@@ -2645,7 +3144,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         for (String id : Actions.panelOrder(this)) if (Actions.panelShows(this, id)) items++;
         LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(Ui.px(this, 300), Ui.px(this, 140));
         pl.topMargin = Ui.px(this, 14);
-        LinearLayout panelTile = Ui.tile(this, R.drawable.ic_sliders, "Быстрая панель", "яркость и " + items + " " + plural(items, "пункт", "пункта", "пунктов"), 300, 140,
+        LinearLayout panelTile = Ui.tile(this, R.drawable.ic_sliders, getString(R.string.quick_panel), plural(R.plurals.panel_items_sub, items), 300, 140,
                 v -> openPanelSettings(null, null));
         panelTile.setTag("panel");
         s.addView(panelTile, pl);
@@ -2654,7 +3153,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         else add.requestFocus();
     }
 
-    /** A control showing which app a button opens: its icon, "Нажатие" and the app's name. */
+    /** A control showing which app a button opens: its icon, "Press" and the app's name. */
     private View appChoice(String what, String pkg, View.OnClickListener click) {
         LinearLayout c = new LinearLayout(this);
         c.setGravity(Gravity.CENTER_VERTICAL);
@@ -2688,7 +3187,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         t.setOrientation(LinearLayout.VERTICAL);
         TextView w = Ui.text(this, what, 15, 400, Ui.TEXT_DIM);
         t.addView(w);
-        TextView n = Ui.text(this, action ? Actions.name(pkg) : app != null ? app.label : pkg == null ? "ничего" : "не установлено", 16, 600, Color.WHITE);
+        TextView n = Ui.text(this, action ? Actions.name(this, pkg) : app != null ? app.label : getString(pkg == null ? R.string.nothing : R.string.not_installed), 16, 600, Color.WHITE);
         n.setSingleLine(true);
         n.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
@@ -2703,16 +3202,16 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         return c;
     }
 
-    /** What a button does: the actions on top (there are few), then every app, "ничего" first. */
+    /** What a button does: the actions on top (there are few), then every app, "nothing" first. */
     private void pickApp(int code, boolean hold) {
         Mappings mp = new Mappings(this);
         String current = hold ? mp.hold(code) : mp.tap(code);
         FrameLayout h = host();
-        LinearLayout s = page(h, Mappings.name(code) + (hold ? " · удержание" : " · нажатие"), "что делать по кнопке", true);
+        LinearLayout s = page(h, getString(hold ? R.string.pick_hold_title : R.string.pick_tap_title, Mappings.name(code)), getString(R.string.pick_sub), true);
         View[] focus = new View[1];
-        section(s, "Действия");
+        section(s, getString(R.string.actions));
         s.addView(choiceGrid(java.util.Arrays.asList(Actions.ALL), code, hold, current, focus));
-        section(s, "Приложения");
+        section(s, getString(R.string.apps_title));
         List<Apps.App> all = apps.installed();
         java.util.Collections.sort(all, (a, b) -> a.label.compareToIgnoreCase(b.label));
         List<String> pkgs = new java.util.ArrayList<>();
@@ -2731,7 +3230,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         int w = Math.round((getResources().getDisplayMetrics().widthPixels - Ui.px(this, 144) - Ui.px(this, 16) * 3) / 4f);
         for (int i = 0; i < values.size(); i++) {
             String pkg = values.get(i);
-            String verb = Actions.is(pkg) ? Actions.verb(pkg) : pkg == null ? "убрать" : "открыть";
+            String verb = Actions.is(pkg) ? Actions.verb(this, pkg) : getString(pkg == null ? R.string.verb_remove : R.string.verb_open);
             View c = appChoice(verb, pkg, v -> {
                 new Mappings(this).set(code, hold, pkg);
                 goingBack = true;
@@ -2768,9 +3267,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
      */
     private void openPanelSettings(String focus, String moving) {
         FrameLayout h = host();
-        LinearLayout s = page(h, "Панель", "по удержанию Prime Video", true);
-        section(s, "Пункты");
-        LinearLayout fixed = panelRow("Яркость", "бегунок · всегда первая", true, false);
+        LinearLayout s = page(h, getString(R.string.act_panel), getString(R.string.panel_sub), true);
+        section(s, getString(R.string.panel_items));
+        LinearLayout fixed = panelRow(getString(R.string.brightness), getString(R.string.slider_always), true, false);
         fixed.setFocusable(false);
         fixed.setAlpha(0.7f);
         s.addView(fixed);
@@ -2778,8 +3277,8 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         View first = null, wanted = null;
         for (String id : order) {
             boolean on = Actions.panelShows(this, id);
-            String sub = Actions.SLEEP.equals(id) ? "15 · 30 · 45 · 60 · 90 мин" : Actions.verb(id);
-            LinearLayout r = panelRow(Actions.name(id), id.equals(moving) ? "↑ ↓ — двигать, OK — поставить" : sub, on, id.equals(moving));
+            String sub = Actions.SLEEP.equals(id) ? getString(R.string.sleep_steps) : Actions.verb(this, id);
+            LinearLayout r = panelRow(Actions.name(this, id), id.equals(moving) ? getString(R.string.moving_hint) : sub, on, id.equals(moving));
             r.setTag("panel_" + id);
             Ui.focusable(r);
             r.setOnClickListener(v -> {
@@ -2816,21 +3315,21 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             if (first == null) first = r;
             if (id.equals(focus)) wanted = r;
         }
-        TextView tip = label("OK — показать или скрыть · долгий OK — взять и двигать стрелками");
+        TextView tip = label(getString(R.string.panel_tip));
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
         tl.topMargin = Ui.px(this, 16);
         s.addView(tip, tl);
 
-        section(s, "Скрывать через");
+        section(s, getString(R.string.hide_after));
         int[] secs = {3, 5, 10};
         int t = Actions.panelTimeout(this);
-        LinearLayout hide = segmented(new String[]{"3 с", "5 с", "10 с"}, t == 3 ? 0 : t == 10 ? 2 : 1, 300, i -> {
+        LinearLayout hide = segmented(new String[]{getString(R.string.sec_3), getString(R.string.sec_5), getString(R.string.sec_10s)}, t == 3 ? 0 : t == 10 ? 2 : 1, 300, i -> {
             Actions.setPanelTimeout(this, secs[i]);
             redrawPanelSettings("timeout", null);
         });
         hide.setTag("timeout");
         s.addView(hide);
-        section(s, "Шаг яркости");
+        section(s, getString(R.string.brightness_step));
         int[] steps = {5, 10};
         LinearLayout step = segmented(new String[]{"5%", "10%"}, Actions.brightnessStep(this) == 10 ? 1 : 0, 200, i -> {
             Actions.setBrightnessStep(this, steps[i]);
@@ -2848,7 +3347,10 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         openPanelSettings(focus, moving);
     }
 
-    /** One item of the panel: its name and a line, a switch on the right; white while it is being moved. */
+    /**
+     * One item of the panel: its name and a line, and its state in words on the right, as tvOS settings rows
+     * do ("On" / "Off"; there are no switches on Apple TV). White while it is being moved.
+     */
     private LinearLayout panelRow(String name, String sub, boolean on, boolean moving) {
         LinearLayout r = row();
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -2861,18 +3363,12 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         TextView l = Ui.text(this, sub, 15, 400, Ui.TEXT_DIM);
         l.setTextColor(Ui.inkDim());
         r.addView(l);
-        View sw = new View(this);
-        sw.setBackground(Ui.round(on ? Ui.ON : 0x38FFFFFF, 0, 13, this));
-        FrameLayout swb = new FrameLayout(this);
-        swb.addView(sw, new FrameLayout.LayoutParams(-1, -1));
-        View knob = new View(this);
-        knob.setBackground(Ui.round(Color.WHITE, 0, 10, this));
-        FrameLayout.LayoutParams kl = new FrameLayout.LayoutParams(Ui.px(this, 20), Ui.px(this, 20), Gravity.CENTER_VERTICAL | (on ? Gravity.END : Gravity.START));
-        kl.leftMargin = kl.rightMargin = Ui.px(this, 3);
-        swb.addView(knob, kl);
-        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(Ui.px(this, 44), Ui.px(this, 26));
+        TextView state = Ui.text(this, getString(on ? R.string.switch_on : R.string.switch_off), 16, 600, Color.WHITE);
+        state.setTextColor(Ui.ink());
+        state.setGravity(Gravity.END);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(Ui.px(this, 64), -2);
         sl.leftMargin = Ui.px(this, 18);
-        r.addView(swb, sl);
+        r.addView(state, sl);
         r.setLayoutParams(new LinearLayout.LayoutParams(Ui.px(this, 640), Ui.px(this, 56)));
         return r;
     }
@@ -2887,12 +3383,12 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         FrameLayout h = host();
         String bot = tg.botName();
         boolean ready = !tg.token().isEmpty();
-        LinearLayout s = page(h, "Telegram", ready ? tg.status.toLowerCase(RU) : "бот не подключён", true);
+        LinearLayout s = page(h, "Telegram", ready ? tg.statusText().toLowerCase(loc()) : getString(R.string.tg_not_connected), true);
         View first = null;
 
         if (!ready) {
-            section(s, "Подключите бота — один раз");
-            String[] steps = {"В Telegram откройте @BotFather и отправьте /newbot", "Придумайте имя — BotFather пришлёт токен", "Вставьте токен ниже и нажмите «Подключить»"};
+            section(s, getString(R.string.connect_bot));
+            String[] steps = {getString(R.string.step_1), getString(R.string.step_2), getString(R.string.step_3)};
             for (int i = 0; i < steps.length; i++) {
                 LinearLayout st = row();
                 st.setGravity(Gravity.CENTER_VERTICAL);
@@ -2910,7 +3406,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 if (i > 0) sl.topMargin = Ui.px(this, 10);
                 s.addView(st, sl);
             }
-            section(s, "Токен бота");
+            section(s, getString(R.string.bot_token));
             View field = tokenRow(s);
             show(h, "telegram");
             field.requestFocus();
@@ -2923,12 +3419,12 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(Ui.px(this, 24), Ui.px(this, 20), Ui.px(this, 24), Ui.px(this, 20));
             card.setBackground(Ui.glass(this, 26));
-            card.addView(personLine(p, "хочет писать на телевизор"));
+            card.addView(personLine(p, getString(R.string.wants_write)));
             LinearLayout btns = row();
-            TextView yes = chip("Разрешить", false, v -> tg.approve(p.id, true));
+            TextView yes = chip(getString(R.string.allow), false, v -> tg.approve(p.id, true));
             yes.setTag("yes_" + p.id);
             btns.addView(yes, new LinearLayout.LayoutParams(0, Ui.px(this, 50), 1));
-            TextView no = chip("Нет", false, v -> tg.approve(p.id, false));
+            TextView no = chip(getString(R.string.no), false, v -> tg.approve(p.id, false));
             no.setTag("no_" + p.id);
             LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(0, Ui.px(this, 50), 1);
             nl.leftMargin = Ui.px(this, 12);
@@ -2943,53 +3439,119 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         }
 
         List<Telegram.Person> allowed = tg.people("allowed");
-        section(s, "Кто может писать");
+        section(s, getString(R.string.who_can_write));
         if (allowed.isEmpty()) {
-            s.addView(label("Пока никто. Напишите боту — здесь появится запрос"));
+            s.addView(label(getString(R.string.nobody)));
         } else {
             LinearLayout people = row();
             for (Telegram.Person p : allowed) {
                 LinearLayout chip = personLine(p, null);
                 chip.setPadding(Ui.px(this, 12), 0, Ui.px(this, 22), 0);
-                chip.setBackground(Ui.control(this, 32));
-                TextView rm = Ui.text(this, "убрать", 15, 400, Ui.TEXT_FAINT);
+                chip.setBackground(Ui.control(this, Ui.PILL));
+                TextView rm = Ui.text(this, getString(R.string.remove_small), 15, 400, Ui.TEXT_FAINT);
                 LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, -2);
                 rl.leftMargin = Ui.px(this, 12);
                 chip.addView(rm, rl);
                 chip.setTag("rm_" + p.id);
                 Ui.focusable(chip);
-                chip.setOnClickListener(v -> dialog(R.drawable.ic_send, "Убрать " + p.name + "?",
-                        "Сообщения от " + p.name + " перестанут приходить на телевизор.", null,
-                        new String[]{"Убрать", "Отмена"}, new Runnable[]{() -> tg.remove(p.id), null}, 1));
+                chip.setOnClickListener(v -> dialog(R.drawable.ic_send, getString(R.string.remove_person_title, p.name),
+                        getString(R.string.remove_person_text, p.name), null,
+                        new String[]{getString(R.string.remove), getString(R.string.cancel)}, new Runnable[]{() -> tg.remove(p.id), null}, 1));
                 chip.setLayoutParams(new LinearLayout.LayoutParams(-2, Ui.px(this, 64)));
                 addSpaced(people, chip, 14);
             }
             s.addView(people);
         }
 
-        section(s, "Сообщения исчезают");
         int[] hours = {0, 3, 24};
         int on = 0;
         for (int i = 0; i < hours.length; i++) if (tg.keepHours() == hours[i]) on = i;
-        LinearLayout keep = segmented(new String[]{"Только по OK", "Через 3 часа", "Через сутки"}, on, 640, i -> tg.setKeepHours(hours[i]));
+        // the notes on Home: whole messages, or short to-do lines
+        section(s, getString(R.string.notes_view));
+        boolean asList = notesAsList();
+        LinearLayout look = segmented(new String[]{getString(R.string.notes_cards), getString(R.string.notes_list)}, asList ? 1 : 0, 420, i -> {
+            notesPrefs().edit().putBoolean("list", i == 1).apply();
+            renderMessages();
+            openTelegram();
+            View f = overlay == null ? null : overlay.findViewWithTag("notes_" + i);
+            if (f != null) f.requestFocus();
+        });
+        look.getChildAt(0).setTag("notes_0");
+        look.getChildAt(1).setTag("notes_1");
+        s.addView(look);
+        if (asList) {
+            // what each line holds: the text always, the name and the face if wanted
+            LinearLayout opts = row();
+            String[][] opt = {{"names", getString(R.string.notes_name)}, {"avatars", getString(R.string.notes_avatar)}};
+            for (String[] o : opt) {
+                boolean shown = notesPrefs().getBoolean(o[0], true);
+                TextView c = chip(o[1] + " · " + getString(shown ? R.string.switch_on : R.string.switch_off), false, v -> {
+                    notesPrefs().edit().putBoolean(o[0], !shown).apply();
+                    renderMessages();
+                    openTelegram();
+                    View f = overlay == null ? null : overlay.findViewWithTag("opt_" + o[0]);
+                    if (f != null) f.requestFocus();
+                });
+                c.setBackground(Ui.toggle(this, Ui.PILL, shown));
+                c.setTag("opt_" + o[0]);
+                addSpaced(opts, c, 12);
+            }
+            LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, -2);
+            ol.topMargin = Ui.px(this, 14);
+            s.addView(opts, ol);
+        }
+        // a sample of the chosen look, drawn by the same code as Home, on made-up notes
+        TextView pv = label(getString(R.string.notes_preview));
+        LinearLayout.LayoutParams pvl = new LinearLayout.LayoutParams(-2, -2);
+        pvl.topMargin = Ui.px(this, 16);
+        s.addView(pv, pvl);
+        LinearLayout sample = new LinearLayout(this);
+        sample.setOrientation(LinearLayout.VERTICAL);
+        String[][] notes = {{getString(R.string.sample_name_1), getString(R.string.sample_note_1)}, {getString(R.string.sample_name_2), getString(R.string.sample_note_2)}};
+        for (int i = 0; i < notes.length; i++) {
+            Telegram.Msg m = new Telegram.Msg();
+            m.from = -1 - i;
+            m.name = notes[i][0];
+            m.text = notes[i][1];
+            m.date = System.currentTimeMillis() / 1000 - 600 * (i + 1);
+            View v = asList ? noteRow(m) : sampleCard(m);
+            v.setFocusable(false);
+            v.setClickable(false);
+            LinearLayout.LayoutParams vl = new LinearLayout.LayoutParams(-1, -2);
+            vl.topMargin = Ui.px(this, 8);
+            sample.addView(v, vl);
+        }
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(Ui.px(this, 420), -2);
+        s.addView(sample, sl);
+
+        section(s, getString(R.string.messages_vanish));
+        LinearLayout keep = segmented(new String[]{getString(R.string.keep_ok), getString(R.string.keep_3h), getString(R.string.keep_day)}, on, 640, i -> tg.setKeepHours(hours[i]));
         for (int i = 0; i < hours.length; i++) keep.getChildAt(i).setTag("keep_" + hours[i]);
         s.addView(keep);
         if (first == null) first = keep.getChildAt(on);
 
         // the invitation: scanning the QR opens the bot with this TV's code, and that person may write at once
-        qrBlock(h, tg.inviteLink(), "Наведите камеру — и пишите",
-                "Telegram откроет бота и сам нажмёт «Старт» с кодом этого телевизора. Разрешать ничего не нужно. Код меняется каждые 10 минут."
-                        + (bot.isEmpty() ? "" : " Кто найдёт @" + bot + " сам, без QR, попадёт сюда запросом."));
+        qrBlock(h, tg.inviteLink(), getString(R.string.qr_title),
+                getString(R.string.qr_text) + (bot.isEmpty() ? "" : getString(R.string.qr_text_bot, bot)));
 
         // another bot: rarely needed, so one quiet line at the bottom that opens the field
         LinearLayout other = new LinearLayout(this);
         other.setOrientation(LinearLayout.VERTICAL);
-        TextView more = Ui.text(this, "Подключить другого бота ›", 15, 500, Color.WHITE);
-        more.setPadding(Ui.px(this, 14), Ui.px(this, 8), Ui.px(this, 14), Ui.px(this, 8));
-        more.setBackground(Ui.control(this, 18));
+        TextView more = Ui.text(this, getString(R.string.other_bot), 15, 500, Color.WHITE);
+        // a capsule like every button, on the page's left edge with the rest
+        more.setPadding(Ui.px(this, 22), 0, Ui.px(this, 22), 0);
+        more.setMinHeight(Ui.px(this, 48));
+        more.setGravity(Gravity.CENTER);
+        more.setBackground(Ui.control(this, Ui.PILL));
+        // quiet while it rests; under the cursor it is a control like any other, full white
         more.setAlpha(0.7f);
         more.setTag("other_bot");
         Ui.focusable(more);
+        more.setOnFocusChangeListener((v, has) -> {
+            Ui.grow(v, has);
+            Ui.inkOn(v, has);
+            v.setAlpha(has ? 1f : 0.7f);
+        });
         more.setOnClickListener(v -> {
             other.removeView(v);
             tokenRow(other).requestFocus();
@@ -2997,7 +3559,6 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         other.addView(more);
         LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, -2);
         ol.topMargin = Ui.px(this, 40);
-        ol.leftMargin = -Ui.px(this, 14);
         s.addView(other, ol);
 
         show(h, "telegram");
@@ -3045,7 +3606,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         token.setBackground(tb);
         token.setOnFocusChangeListener((v, has) -> Ui.grow(v, has));
         tr.addView(token, new LinearLayout.LayoutParams(Ui.px(this, 520), Ui.px(this, 58)));
-        TextView save = chip("Подключить", false, v -> {
+        TextView save = chip(getString(R.string.connect), false, v -> {
             String t = token.getText().toString().trim();
             if (!t.isEmpty()) tg.setToken(t);
             closeOverlay();

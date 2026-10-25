@@ -14,9 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Locale;
 
 /**
  * The quick panel: a card at the bottom of the screen over whatever is playing, opened by a remote button
@@ -41,15 +39,13 @@ final class QuickPanel {
     }
 
     static void show(Context c) {
-        Context app = c.getApplicationContext();
+        // the panel's texts come from the chosen language, whichever context asked for it
+        Context app = Lang.wrap(c.getApplicationContext());
         if (!Dim.available(app)) {
-            Toast.makeText(app, "Панели нужно разрешение поверх других окон: adb shell appops set "
-                    + app.getPackageName() + " SYSTEM_ALERT_WINDOW allow", Toast.LENGTH_LONG).show();
+            Toast.makeText(app, app.getString(R.string.overlay_permission, app.getPackageName()), Toast.LENGTH_LONG).show();
             return;
         }
         if (view != null) return;
-        // the dark layer goes up first, so a darker setting lies under the panel, not over it
-        Dim.apply(app, true);
         view = build(app);
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -57,17 +53,28 @@ final class QuickPanel {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.BOTTOM;
         wm(app).addView(view, lp);
+        // it rises from the bottom edge instead of appearing at once
+        view.setAlpha(0f);
+        view.setTranslationY(Ui.px(app, 40));
+        view.animate().alpha(1f).translationY(0).setInterpolator(FocusRing.EASE).setDuration(240).start();
         view.findViewWithTag("brightness").requestFocus();
+        // the panel is dimmed like everything else, so it has the dock's tone and the slider shows its effect on
+        // the panel itself: the dark layer goes back on top of it
+        Dim.raise(app);
         poke(app);
     }
 
     static void hide() {
         main.removeCallbacks(hideLater);
         if (view == null) return;
-        Context app = view.getContext();
-        wm(app).removeView(view);
+        View gone = view;
+        Context app = gone.getContext();
         view = null;
-        Dim.apply(app);
+        // and sinks back out of sight; the window goes once it is down
+        gone.animate().alpha(0f).translationY(Ui.px(app, 40)).setDuration(180).withEndAction(() -> {
+            if (gone.isAttachedToWindow()) wm(app).removeView(gone);
+            Dim.apply(app);
+        }).start();
     }
 
     /** A key was pressed: the panel stays up for another few seconds. */
@@ -90,21 +97,24 @@ final class QuickPanel {
         };
         root.setClipChildren(false);
         root.setClipToPadding(false);
-        // room above and around the card for the cursor's growth
-        root.setPadding(Ui.px(c, 72), Ui.px(c, 24), Ui.px(c, 72), Ui.px(c, 48));
+        // the dock's own insets (64 at the sides, 40 below): over Home the card lies exactly on the dock and
+        // hides it, no strip of it showing around; the room above is for the cursor's growth
+        root.setPadding(Ui.px(c, 64), Ui.px(c, 24), Ui.px(c, 64), Ui.px(c, 40));
 
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setClipChildren(false);
         card.setClipToPadding(false);
         card.setPadding(Ui.px(c, 30), Ui.px(c, 26), Ui.px(c, 30), Ui.px(c, 24));
-        card.setBackground(Ui.round(Ui.SURFACE_SOLID, Ui.GLASS_LINE, 28, c));
+        // over Home the bay behind can be blurred like every panel; over another app there is nothing to read back
+        if (MainActivity.front && Backdrop.current() != null) Ui.glassBackground(card, Ui.DARK_GLASS, Ui.GLASS_LINE, Ui.RADIUS_PANEL);
+        else card.setBackground(new Ui.Rim(c, Ui.PANEL_OVER_APP, Ui.RADIUS_PANEL));
         root.addView(card, new FrameLayout.LayoutParams(-1, -2));
 
         LinearLayout head = new LinearLayout(c);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(Ui.text(c, "Быстрые настройки", 24, 600, Color.WHITE), new LinearLayout.LayoutParams(0, -2, 1));
-        head.addView(Ui.text(c, new SimpleDateFormat("HH:mm", Locale.ROOT).format(new Date()), 16, 500, Ui.TEXT_DIM));
+        head.addView(Ui.text(c, c.getString(R.string.quick_settings), 24, 600, Color.WHITE), new LinearLayout.LayoutParams(0, -2, 1));
+        head.addView(Ui.text(c, Lang.clock(c, new Date()), 16, 500, Ui.TEXT_DIM));
         card.addView(head);
 
         View bright = brightness(c);
@@ -134,20 +144,23 @@ final class QuickPanel {
         }
 
         // 16 units is the 23 pt floor of TV text at 1080p: smaller can't be read from the couch
-        TextView hint = Ui.text(c, "← → яркость · Back — закрыть", 16, 400, Ui.TEXT_FAINT);
+        TextView hint = Ui.text(c, c.getString(R.string.quick_hint), 16, 400, Ui.TEXT_FAINT);
         LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
         hl.topMargin = Ui.px(c, 18);
         card.addView(hint, hl);
         return root;
     }
 
-    /** The brightness row: one control, ←/→ move the slider by the step set in «Панель». */
-    private static View brightness(Context c) {
+    /**
+     * The brightness row: one control, ←/→ move the slider by the step set in «Панель». Shared with the settings
+     * page, so the two never drift apart.
+     */
+    static View brightness(Context c) {
         LinearLayout r = new LinearLayout(c);
         r.setGravity(Gravity.CENTER_VERTICAL);
         r.setPadding(Ui.px(c, 22), 0, Ui.px(c, 22), 0);
         r.setBackground(Ui.control(c, 24));
-        TextView name = Ui.text(c, "Яркость", 17, 600, Color.WHITE);
+        TextView name = Ui.text(c, c.getString(R.string.brightness), 17, 600, Color.WHITE);
         r.addView(name, new LinearLayout.LayoutParams(Ui.px(c, 110), -2));
         // a dim sun at the dark end, a full one at the bright end: which way is brighter needs no reading
         r.addView(Ui.icon(c, R.drawable.ic_sun_dim, 22));
@@ -184,7 +197,7 @@ final class QuickPanel {
     private static View item(Context c, String id) {
         boolean on = Actions.NIGHT.equals(id) ? Dim.night(c) : Actions.SLEEP.equals(id) && Actions.sleepAt(c) != 0;
         // switched on says so in words too, not only in blue
-        String label = Actions.SLEEP.equals(id) ? Actions.sleepLabel(c) : Actions.NIGHT.equals(id) && on ? "Ночь · вкл" : Actions.name(id);
+        String label = Actions.SLEEP.equals(id) ? Actions.sleepLabel(c) : Actions.NIGHT.equals(id) && on ? c.getString(R.string.night_on) : Actions.name(c, id);
         return Ui.pill(c, Actions.icon(id), label, on, v -> {
             switch (id) {
                 case Actions.NIGHT:

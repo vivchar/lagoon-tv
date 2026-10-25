@@ -72,13 +72,22 @@ final class Dim {
     }
 
     static void apply(Context app) {
-        apply(app, false);
+        // while the quick panel is up the layer stays even at 100%, so it does not blink out and back
+        apply(app, QuickPanel.shown());
     }
 
-    /**
-     * Puts the layer up even when it is clear: the quick panel calls this before it shows itself, so a layer
-     * that the slider brings up later lies under the panel instead of over it.
-     */
+    /** Puts the layer above every other overlay (the quick panel), adding it clear if it is not up. */
+    static void raise(Context app) {
+        if (!available(app)) return;
+        WindowManager wm = (WindowManager) app.getSystemService(Context.WINDOW_SERVICE);
+        if (view != null) {
+            wm.removeView(view);
+            view = null;
+        }
+        apply(app, true);
+    }
+
+    /** {@code keep}: put the layer up even when it is clear (see {@link #raise}). */
     static void apply(Context app, boolean keep) {
         if (!available(app)) return;
         WindowManager wm = (WindowManager) app.getSystemService(Context.WINDOW_SERVICE);

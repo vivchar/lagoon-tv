@@ -38,6 +38,15 @@ final class Weather {
             {"Бали", "Индонезия", "-8.650", "115.216"}
     };
 
+    /** The built-in places are stored under their Russian names; these show them in the language in use. */
+    private static final String[] KNOWN = {"Пхукет", "Бангкок", "Паттайя", "Самуи", "Чиангмай", "Москва", "Санкт-Петербург", "Дубай", "Бали",
+            "Таиланд", "Россия", "ОАЭ", "Индонезия", "Ката"};
+    private static final int[] KNOWN_RES = {R.string.city_phuket, R.string.city_bangkok, R.string.city_pattaya, R.string.city_samui,
+            R.string.city_chiangmai, R.string.city_moscow, R.string.city_spb, R.string.city_dubai, R.string.city_bali,
+            R.string.country_thailand, R.string.country_russia, R.string.country_uae, R.string.country_indonesia,
+            // the bay behind Home: searched for once, and stored in Russian on the owner's TV
+            R.string.city_kata};
+
     private final Context ctx;
     private final SharedPreferences prefs;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -53,6 +62,68 @@ final class Weather {
             if (prefs.contains("marine")) marine = new JSONObject(prefs.getString("marine", "{}"));
             if (prefs.contains("air")) air = new JSONObject(prefs.getString("air", "{}"));
         } catch (Exception ignored) {
+        }
+        localizePlaces();
+    }
+
+    /**
+     * Names found by search are stored in the language they were searched in («Ката» stays Russian after a switch
+     * to English). When the interface language is not the one they were stored in, ask the geocoder again in the
+     * new language and keep the result at the same spot; names it can't find keep their old spelling.
+     */
+    private void localizePlaces() {
+        String lang = Lang.effective(ctx).substring(0, 2);
+        if (lang.equals(prefs.getString("names_lang", "ru"))) return;
+        String[] cur = {placeName(), placeRegion(), placeLat(), placeLon(), prefs.getString("place_id", "")};
+        List<String[]> rec = recent();
+        new Thread(() -> {
+            String[] now = renamed(cur, lang);
+            JSONArray a = new JSONArray();
+            for (String[] p : rec) {
+                String[] r = renamed(p, lang);
+                a.put(new JSONArray().put(r[0]).put(r[1]).put(r[2]).put(r[3]).put(r[4]));
+            }
+            main.post(() -> {
+                prefs.edit().putString("place_name", now[0]).putString("place_region", now[1])
+                        .putString("recent", a.toString()).putString("names_lang", lang).apply();
+                if (listener != null && forecast != null) listener.onWeather(this);
+            });
+        }, "geocode-names").start();
+    }
+
+    /**
+     * {name, region, lat, lon, id} in {@code lang}. With the geocoder's id the place is asked for directly; without
+     * one (picked before ids were kept) its name is searched for and the result at the same spot is taken. A
+     * built-in name is left alone: {@link #show} translates it.
+     */
+    private String[] renamed(String[] p, String lang) {
+        for (String k : KNOWN) if (k.equals(p[0])) return p;
+        try {
+            JSONObject best = null;
+            if (!p[4].isEmpty()) {
+                best = get("https://geocoding-api.open-meteo.com/v1/get?language=" + lang + "&id=" + p[4]);
+            } else {
+                double lat = Double.parseDouble(p[2]), lon = Double.parseDouble(p[3]);
+                JSONObject r = get("https://geocoding-api.open-meteo.com/v1/search?count=100&format=json&language=" + lang
+                        + "&name=" + java.net.URLEncoder.encode(p[0], "UTF-8"));
+                JSONArray a = r.optJSONArray("results");
+                double bestD = 0.05;
+                for (int i = 0; a != null && i < a.length(); i++) {
+                    JSONObject c = a.getJSONObject(i);
+                    double d = Math.abs(c.optDouble("latitude") - lat) + Math.abs(c.optDouble("longitude") - lon);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = c;
+                    }
+                }
+            }
+            if (best == null || !best.has("name")) return p;
+            String where = best.optString("admin1", ""), country = best.optString("country", "");
+            where = where.isEmpty() ? country : country.isEmpty() ? where : where + ", " + country;
+            String id = best.has("id") ? String.valueOf(best.optLong("id")) : p[4];
+            return new String[]{best.optString("name", p[0]), where.isEmpty() ? p[1] : where, p[2], p[3], id};
+        } catch (Exception e) {
+            return p;
         }
     }
 
@@ -79,13 +150,29 @@ final class Weather {
         return prefs.getString("place_region", CITIES[0][1]);
     }
 
-    /** "Ката, Пхукет": the place and its region, the region left out when it is the place itself. */
+    /** A built-in city or country in the language in use; a name found by search is already in it, and stays. */
+    String show(String stored) {
+        for (int i = 0; i < KNOWN.length; i++) if (KNOWN[i].equals(stored)) return ctx.getString(KNOWN_RES[i]);
+        return stored;
+    }
+
+    /** "region, country" with the built-in names translated one by one. */
+    String showRegion(String stored) {
+        String[] parts = stored.split(", ");
+        for (int i = 0; i < parts.length; i++) parts[i] = show(parts[i]);
+        return String.join(", ", parts);
+    }
+
+    /** "Kata, Phuket": the place and its region, the region left out when it is the place itself. */
     String placeTitle() {
-        String name = placeName(), region = placeRegion().split(",")[0].trim();
+        String name = show(placeName()), region = showRegion(placeRegion().split(",")[0].trim());
         return region.isEmpty() || region.equalsIgnoreCase(name) ? name : name + ", " + region;
     }
 
     void setPlace(String name, String region, String lat, String lon) {
+        // a place picked now comes in the interface's language (search) or is built in (translated on show)
+        String id = foundIds.get(lat + "," + lon);
+        prefs.edit().putString("names_lang", Lang.effective(ctx).substring(0, 2)).putString("place_id", id == null ? "" : id).apply();
         // the one being left goes first in «Недавние»
         remember(placeName(), placeRegion(), placeLat(), placeLon());
         prefs.edit().putString("place_name", name).putString("place_region", region)
@@ -100,7 +187,7 @@ final class Weather {
             JSONArray a = new JSONArray(prefs.getString("recent", "[]"));
             for (int i = 0; i < a.length(); i++) {
                 JSONArray p = a.getJSONArray(i);
-                out.add(new String[]{p.getString(0), p.getString(1), p.getString(2), p.getString(3)});
+                out.add(new String[]{p.getString(0), p.getString(1), p.getString(2), p.getString(3), p.optString(4, "")});
             }
         } catch (Exception ignored) {
         }
@@ -108,20 +195,23 @@ final class Weather {
     }
 
     private void remember(String name, String region, String lat, String lon) {
-        JSONArray a = new JSONArray().put(new JSONArray().put(name).put(region).put(lat).put(lon));
+        JSONArray a = new JSONArray().put(new JSONArray().put(name).put(region).put(lat).put(lon).put(prefs.getString("place_id", "")));
         for (String[] p : recent())
-            if (!p[0].equals(name) && a.length() < 3) a.put(new JSONArray().put(p[0]).put(p[1]).put(p[2]).put(p[3]));
+            if (!p[0].equals(name) && a.length() < 3) a.put(new JSONArray().put(p[0]).put(p[1]).put(p[2]).put(p[3]).put(p[4]));
         prefs.edit().putString("recent", a.toString()).apply();
     }
 
     interface Found { void onFound(List<String[]> places); }
+
+    /** Geocoder ids of what the last searches found, by "lat,lon". */
+    private final java.util.Map<String, String> foundIds = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** City search through Open-Meteo's geocoder: {name, lat, lon, "region, country"} per result. */
     void search(String query, Found done) {
         new Thread(() -> {
             List<String[]> out = new ArrayList<>();
             try {
-                JSONObject r = get("https://geocoding-api.open-meteo.com/v1/search?count=10&language=ru&format=json&name="
+                JSONObject r = get("https://geocoding-api.open-meteo.com/v1/search?count=10&language=" + Lang.effective(ctx) + "&format=json&name="
                         + java.net.URLEncoder.encode(query.trim(), "UTF-8"));
                 JSONArray a = r.optJSONArray("results");
                 for (int i = 0; a != null && i < a.length(); i++) {
@@ -129,8 +219,10 @@ final class Weather {
                     String where = p.optString("admin1", "");
                     String country = p.optString("country", "");
                     where = where.isEmpty() ? country : country.isEmpty() ? where : where + ", " + country;
-                    out.add(new String[]{p.optString("name"), String.valueOf(p.optDouble("latitude")),
-                            String.valueOf(p.optDouble("longitude")), where});
+                    String la = String.valueOf(p.optDouble("latitude")), lo = String.valueOf(p.optDouble("longitude"));
+                    out.add(new String[]{p.optString("name"), la, lo, where});
+                    // the geocoder's id names the place in any language later (see localizePlaces)
+                    if (p.has("id")) foundIds.put(la + "," + lo, String.valueOf(p.optLong("id")));
                 }
             } catch (Exception e) {
                 Log.w("Weather", "search", e);
@@ -216,9 +308,9 @@ final class Weather {
 
     String wind() {
         JSONObject c = forecast.optJSONObject("current");
-        String[] dirs = {"С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"};
+        String[] dirs = ctx.getResources().getStringArray(R.array.wind_dirs);
         int d = (int) Math.round(c.optDouble("wind_direction_10m") / 45) % 8;
-        return dirs[d] + " " + Math.round(c.optDouble("wind_speed_10m") / 3.6) + " м/с";
+        return ctx.getString(R.string.wind_fmt, dirs[d], Math.round(c.optDouble("wind_speed_10m") / 3.6));
     }
 
     double uv() {
@@ -234,7 +326,7 @@ final class Weather {
     String wave() {
         if (marine == null || marine.optJSONObject("current") == null) return null;
         double v = marine.optJSONObject("current").optDouble("wave_height", Double.NaN);
-        return Double.isNaN(v) ? null : String.format(Locale.forLanguageTag("ru"), "%.1f м", v);
+        return Double.isNaN(v) ? null : ctx.getString(R.string.wave_fmt, v);
     }
 
     Integer pm25() {
@@ -266,7 +358,7 @@ final class Weather {
             int c = code.optInt(i);
             if (prob.optInt(i) >= 60 && c >= 51) {
                 String hh = time.optString(i).substring(11, 16);
-                return (c >= 95 ? "Гроза около " : "Дождь около ") + hh;
+                return ctx.getString(c >= 95 ? R.string.storm_around : R.string.rain_around, hh);
             }
         }
         return null;
@@ -280,17 +372,10 @@ final class Weather {
         return 0;
     }
 
-    static String describe(int code) {
-        if (code == 0) return "ясно";
-        if (code <= 2) return "переменная облачность";
-        if (code == 3) return "пасмурно";
-        if (code <= 48) return "туман";
-        if (code <= 57) return "морось";
-        if (code <= 67) return "дождь";
-        if (code <= 77) return "снег";
-        if (code <= 82) return "ливни";
-        if (code <= 86) return "снегопад";
-        return "гроза";
+    String describe(int code) {
+        return ctx.getString(code == 0 ? R.string.sky_clear : code <= 2 ? R.string.sky_partly : code == 3 ? R.string.sky_overcast
+                : code <= 48 ? R.string.sky_fog : code <= 57 ? R.string.sky_drizzle : code <= 67 ? R.string.sky_rain
+                : code <= 77 ? R.string.sky_snow : code <= 82 ? R.string.sky_showers : code <= 86 ? R.string.sky_snowfall : R.string.sky_storm);
     }
 
     /** When the numbers on screen were fetched, ms; 0 when never. */
@@ -300,7 +385,7 @@ final class Weather {
 
     /**
      * The next hours for the weather screen, {time, temperature, what falls}: now and then every {@code step}
-     * hours. The third field is "гроза" or "дождь" only where one is likely, else empty.
+     * hours. The third field is "storm" or "rain" only where one is likely, else empty.
      */
     List<String[]> hours(int n, int step) {
         List<String[]> out = new ArrayList<>();
@@ -313,8 +398,8 @@ final class Weather {
             int i = now + k * step;
             if (i >= time.length()) break;
             int c = code.optInt(i);
-            String falls = c >= 95 ? "гроза" : prob.optInt(i) >= 60 && c >= 51 ? "дождь" : "";
-            out.add(new String[]{k == 0 ? "сейчас" : time.optString(i).substring(11, 16),
+            String falls = c >= 95 ? ctx.getString(R.string.fall_storm) : prob.optInt(i) >= 60 && c >= 51 ? ctx.getString(R.string.fall_rain) : "";
+            out.add(new String[]{k == 0 ? ctx.getString(R.string.now) : time.optString(i).substring(11, 16),
                     Math.round(temp.optDouble(i)) + "°", falls});
         }
         return out;
@@ -327,15 +412,14 @@ final class Weather {
         if (d == null) return out;
         JSONArray time = d.optJSONArray("time"), code = d.optJSONArray("weather_code"),
                 max = d.optJSONArray("temperature_2m_max"), min = d.optJSONArray("temperature_2m_min");
-        String[] wd = {"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"};
         for (int i = 1; i <= n && i < time.length(); i++) {
-            String day = i == 1 ? "Завтра" : "";
+            String day = i == 1 ? ctx.getString(R.string.tomorrow) : "";
             if (day.isEmpty()) {
                 try {
                     java.util.Date dt = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(time.optString(i));
-                    Calendar c = Calendar.getInstance();
-                    c.setTime(dt);
-                    day = wd[c.get(Calendar.DAY_OF_WEEK) - 1];
+                    // the short weekday of the language, capitalised: "Вс", "Sun", "周日"
+                    String wd = Lang.date(ctx, "EEE", dt);
+                    day = wd.substring(0, 1).toUpperCase(Lang.locale(ctx)) + wd.substring(1);
                 } catch (Exception e) {
                     day = time.optString(i);
                 }
@@ -351,7 +435,7 @@ final class Weather {
         StringBuilder sb = new StringBuilder();
         sb.append(temp()).append("° ").append(describe(code()));
         Integer s = sea();
-        if (s != null) sb.append(" · море ").append(s).append('°');
+        if (s != null) sb.append(" · ").append(ctx.getString(R.string.sea_temp, s));
         double uv = uv();
         if (uv >= 6) sb.append(" · UV ").append(Math.round(uv));
         return sb.toString();

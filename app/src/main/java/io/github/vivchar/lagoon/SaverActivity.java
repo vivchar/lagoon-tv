@@ -8,6 +8,11 @@ import android.view.View;
 /** The screensaver on demand ("Показать сейчас"): the same slideshow, any key closes it. */
 public class SaverActivity extends Activity {
     @Override
+    protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         View v = new SaverView(this);

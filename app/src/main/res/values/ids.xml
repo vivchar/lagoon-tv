@@ -5,4 +5,6 @@
     <item name="base_color" type="id" />
     <!-- the NoteMedia of a note card: what OK and Back play or stop -->
     <item name="media" type="id" />
+    <!-- Ui.press: a control's focused size while OK is held -->
+    <item name="press_scale" type="id" />
 </resources>

@@ -53,7 +53,12 @@ final class Telegram {
     private Listener listener;
     private volatile boolean polling;
     private Thread thread;
-    volatile String status = "";
+    /** A string resource saying how the connection is (0 before the first try), shown on the settings page. */
+    volatile int status;
+
+    String statusText() {
+        return status == 0 ? "" : ctx.getString(status);
+    }
 
     Telegram(Context ctx) {
         this.ctx = ctx;
@@ -340,7 +345,7 @@ final class Telegram {
 
     void start() {
         if (polling || token().isEmpty()) {
-            if (token().isEmpty()) status = "Нет токена бота";
+            if (token().isEmpty()) status = R.string.tg_no_token;
             return;
         }
         polling = true;
@@ -360,7 +365,7 @@ final class Telegram {
                     JSONObject me = api("getMe", "").getJSONObject("result");
                     prefs.edit().putString("bot", me.optString("username")).apply();
                 }
-                if (!"Подключён".equals(status)) { status = "Подключён"; changed(); }
+                if (status != R.string.tg_connected) { status = R.string.tg_connected; changed(); }
                 long offset = prefs.getLong("offset", 0);
                 JSONArray ups = api("getUpdates", "timeout=50&offset=" + offset).getJSONArray("result");
                 for (int i = 0; i < ups.length(); i++) {
@@ -371,7 +376,7 @@ final class Telegram {
                 }
                 changed();
             } catch (Exception e) {
-                status = "Нет связи с Telegram";
+                status = R.string.tg_offline;
                 Log.w("Telegram", "poll: " + safe(e));
                 changed();
                 try {
@@ -483,7 +488,7 @@ final class Telegram {
             if (fileId != null && download(fileId, f)) {
                 msg.photo = f.getPath();
                 msg.kind = "sticker";
-            } else if (msg.text.isEmpty()) msg.text = sticker.optString("emoji", "Стикер");
+            } else if (msg.text.isEmpty()) msg.text = sticker.optString("emoji", ctx.getString(R.string.note_sticker));
         } else if (m.has("animation")) {
             // a GIF plays on the card; one that cannot be fetched is not shown at all rather than as a still
             JSONObject gif = m.getJSONObject("animation");
@@ -501,12 +506,12 @@ final class Telegram {
             File clip = new File(ctx.getFilesDir(), base + ".mp4");
             if (moving.optLong("file_size") <= MAX_FILE && download(moving.getString("file_id"), clip)) msg.clip = clip.getPath();
             if (msg.photo != null || msg.clip != null) msg.kind = round ? "round" : "video";
-            else if (msg.text.isEmpty()) msg.text = round ? "Видеосообщение" : "Видео";
+            else if (msg.text.isEmpty()) msg.text = ctx.getString(round ? R.string.note_round : R.string.video);
         } else if (doc != null && doc.optString("mime_type").startsWith("image/") && doc.optLong("file_size") < 8_000_000) {
             if (download(doc.getString("file_id"), f)) msg.photo = f.getPath();
         } else if (m.has("voice") && msg.text.isEmpty()) {
             int sec = m.getJSONObject("voice").optInt("duration");
-            msg.text = String.format(java.util.Locale.US, "Голосовое · %d:%02d", sec / 60, sec % 60);
+            msg.text = ctx.getString(R.string.note_voice, sec / 60, sec % 60);
             msg.kind = "voice";
             File clip = new File(ctx.getFilesDir(), base + ".ogg");
             if (download(m.getJSONObject("voice").getString("file_id"), clip)) msg.clip = clip.getPath();
@@ -514,14 +519,14 @@ final class Telegram {
             JSONObject a = m.getJSONObject("audio");
             String title = (a.has("title") ? a.optString("performer", "") + " — " + a.optString("title") : a.optString("file_name", "")).trim();
             msg.text = title.startsWith("—") ? title.substring(1).trim() : title;
-            if (msg.text.isEmpty()) msg.text = "Аудио";
+            if (msg.text.isEmpty()) msg.text = ctx.getString(R.string.note_audio);
             msg.kind = "audio";
             File clip = new File(ctx.getFilesDir(), base + ".audio");
             if (a.optLong("file_size") <= MAX_FILE && download(a.getString("file_id"), clip)) msg.clip = clip.getPath();
         } else if (m.has("location") && msg.text.isEmpty()) {
             // a venue is a place picked from the map: its name says more than the coordinates
             JSONObject v = m.optJSONObject("venue");
-            msg.text = v != null ? (v.optString("title") + (v.optString("address").isEmpty() ? "" : "\n" + v.optString("address"))).trim() : "Геопозиция";
+            msg.text = v != null ? (v.optString("title") + (v.optString("address").isEmpty() ? "" : "\n" + v.optString("address"))).trim() : ctx.getString(R.string.note_location);
             msg.kind = "place";
         }
         if (msg.text.isEmpty() && msg.photo == null && msg.clip == null) return null;

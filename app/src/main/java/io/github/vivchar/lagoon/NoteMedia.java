@@ -39,8 +39,10 @@ final class NoteMedia {
     private Surface surface;
     private MediaPlayer mp;
     private boolean focused, loud, played, wantLoud;
+    private final Context ctx;
 
     NoteMedia(Context c, int kind, String clip, Bitmap still, Runnable changed) {
+        this.ctx = c;
         this.kind = kind;
         this.clip = clip;
         this.changed = changed;
@@ -55,7 +57,7 @@ final class NoteMedia {
             pic.addView(poster, new FrameLayout.LayoutParams(-1, -1));
             if (kind == VIDEO) {
                 // a video stands still until OK: say what it is in the corner
-                android.widget.TextView tag = Ui.text(c, "Видео", 14, 600, 0xFFFFFFFF);
+                android.widget.TextView tag = Ui.text(c, c.getString(R.string.video), 14, 600, 0xFFFFFFFF);
                 tag.setPadding(Ui.px(c, 8), Ui.px(c, 3), Ui.px(c, 8), Ui.px(c, 3));
                 tag.setBackground(Ui.round(0x99000000, 0, 8, c));
                 FrameLayout.LayoutParams tl = new FrameLayout.LayoutParams(-2, -2, Gravity.START | Gravity.BOTTOM);
@@ -119,9 +121,9 @@ final class NoteMedia {
 
     /** The line under a focused card: what OK does now. */
     String hint() {
-        if (loud) return "OK или Back — стоп";
-        if (playable()) return (kind == SOUND ? "OK — слушать" : "OK — смотреть") + ", ↓ — к приложениям";
-        return "OK — прочитано, ↓ — к приложениям";
+        if (loud) return ctx.getString(R.string.hint_stop);
+        if (playable()) return ctx.getString(kind == SOUND ? R.string.hint_listen : R.string.hint_watch);
+        return ctx.getString(R.string.hint_read);
     }
 
     void focus(boolean has) {

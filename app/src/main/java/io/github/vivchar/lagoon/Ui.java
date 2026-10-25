@@ -35,20 +35,38 @@ final class Ui {
     static final int GLASS = 0x1FFFFFFF;
     static final int GLASS_FOCUS = 0x2EFFFFFF;
     static final int GLASS_LINE = 0x24FFFFFF;
-    /** The dock and the notes: darker glass that stays readable over a bright sky. */
+    /** The rim of glass: lit at the top edge, nearly gone at the bottom. */
+    static final int RIM_TOP = 0x52FFFFFF, RIM_BOTTOM = 0x0FFFFFFF;
+    /** Glass of something switched on: brighter, not coloured. */
+    static final int GLASS_ON = 0x47FFFFFF;
+    /** The chosen one of a group: brighter glass, text stays white; only the cursor is white. */
+    static final int SELECTED = 0x52FFFFFF;
+    /** Quiet text on white. */
+    static final int INK_DIM = 0xA60B0F14;
+    /**
+     * The tint of every glass panel in the launcher: the dock, notes, menus, dialogs, pages, the quick panel over
+     * Home. One tint everywhere, so nothing looks brighter or richer than the rest.
+     */
     static final int DARK_GLASS = 0x5C12161C;
-    /** A whole settings page: the dock's glass, darker so the page's own text reads over a bright sky. */
-    static final int PAGE_GLASS = 0x8C12161C;
+    /** Corners of the floating panels over Home: the dock, its tile menu, the quick panel. One radius for all. */
+    static final float RADIUS_PANEL = 34;
+    /** Corners of dialogs. */
+    static final float RADIUS_DIALOG = 28;
+    /**
+     * A capsule: the radius is always half the height, whatever the height. Buttons, chips, segments and fields
+     * are capsules; rows, cards, tiles and panels are rounded rectangles with their own radius.
+     */
+    static final float PILL = 999;
+    /** The quick panel over another app: there is nothing to blur there, so a plain fill, light enough to see the film. */
+    static final int PANEL_OVER_APP = 0xD91E2228;
     /** Dialogs and menus. Nearly opaque: without the mockups' blur, anything behind would show through the text. */
     static final int SURFACE = 0xF01E2228;
-    /** The quick panel: over a playing film, where anything showing through behind the text reads as noise. */
-    static final int SURFACE_SOLID = 0xFA1E2228;
     static final int SCRIM = 0x80040810;
     static final int ON = 0xFF0A84FF;
     static final int WARN = 0xFFFFD27A;
     static final int BADGE = 0xFFFF453A;
     /** The same growth as a dock tile, so every control answers the cursor alike. */
-    static final float FOCUS_SCALE = FocusRing.TILE_SCALE;
+    static final float FOCUS_SCALE = 1.07f;
 
     private static Typeface[] faces;
 
@@ -82,8 +100,8 @@ final class Ui {
 
     /** A section label: small capitals, spaced, half-transparent ("СИСТЕМА"). */
     static TextView caps(Context c, String s) {
-        TextView t = text(c, s.toUpperCase(java.util.Locale.forLanguageTag("ru")), 14, 600, TEXT_FAINT);
-        t.setLetterSpacing(0.15f);
+        TextView t = text(c, s.toUpperCase(Lang.locale(c)), 14, 600, TEXT_FAINT);
+        t.setLetterSpacing(Lang.tracking(c, 0.15f));
         return t;
     }
 
@@ -95,58 +113,178 @@ final class Ui {
         return g;
     }
 
-    static GradientDrawable glass(Context c, float radius) {
-        return round(GLASS, GLASS_LINE, radius, c);
+    /** Glass for a control: a light fill and a rim that catches the light at the top, as tvOS draws it. */
+    static Drawable glass(Context c, float radius) {
+        return new Rim(c, GLASS, radius);
     }
 
     /**
-     * A control background. The cursor is a 3 px white ring on slightly brighter glass; a control that is
-     * selected in its group is filled white, with the ring around it when the cursor is on it too.
+     * A control background, the tvOS way: no ring. Under the cursor it turns white (and grows and lifts, see
+     * {@link #grow}). The one chosen in its group is brighter glass with white text: the cursor and the choice
+     * never look alike, so it is always clear what OK would do and what is set.
      */
     static Drawable control(Context c, float radius) {
         StateListDrawable s = new StateListDrawable();
-        GradientDrawable chosenFocus = round(Color.WHITE, 0, radius, c);
-        chosenFocus.setStroke(px(c, 3), 0xFFDDE6F0);
-        s.addState(new int[]{android.R.attr.state_selected, android.R.attr.state_focused}, chosenFocus);
-        s.addState(new int[]{android.R.attr.state_selected}, round(Color.WHITE, 0, radius, c));
-        GradientDrawable focus = round(GLASS_FOCUS, 0, radius, c);
-        focus.setStroke(px(c, 3), Color.WHITE);
-        s.addState(new int[]{android.R.attr.state_focused}, focus);
+        s.addState(new int[]{android.R.attr.state_focused}, round(Color.WHITE, 0, radius, c));
+        s.addState(new int[]{android.R.attr.state_selected}, new Rim(c, SELECTED, radius));
         s.addState(new int[]{}, glass(c, radius));
         return s;
     }
 
-    /** Like {@link #control}, but a switched-on control is blue instead of white. */
-    static Drawable toggle(Context c, float radius, boolean on) {
-        if (!on) return control(c, radius);
+    /**
+     * One segment of a segmented switch: no glass of its own, the groove is the glass. Only the chosen segment
+     * (brighter) and the one under the cursor (white) are filled.
+     */
+    static Drawable segment(Context c, float radius) {
         StateListDrawable s = new StateListDrawable();
-        GradientDrawable focus = round(ON, 0, radius, c);
-        focus.setStroke(px(c, 3), Color.WHITE);
-        s.addState(new int[]{android.R.attr.state_focused}, focus);
-        s.addState(new int[]{}, round(ON, 0, radius, c));
+        s.addState(new int[]{android.R.attr.state_focused}, round(Color.WHITE, 0, radius, c));
+        s.addState(new int[]{android.R.attr.state_selected}, round(SELECTED, 0, radius, c));
+        s.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         return s;
     }
 
-    /** Text on a control: dark on a white (selected) control, white otherwise. */
+    /**
+     * Like {@link #control}, for something that is switched on or off: on, its glass is brighter. The state is
+     * also said in words next to it ("включён"), never by the fill alone.
+     */
+    static Drawable toggle(Context c, float radius, boolean on) {
+        if (!on) return control(c, radius);
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_focused}, round(Color.WHITE, 0, radius, c));
+        s.addState(new int[]{}, new Rim(c, GLASS_ON, radius));
+        return s;
+    }
+
+    /** Text on a control: dark on the cursor's white, white otherwise (the chosen one included). */
     static ColorStateList ink() {
-        return new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
-                new int[]{INK, TEXT});
+        return new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}}, new int[]{INK, TEXT});
     }
 
     static ColorStateList inkDim() {
-        return new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
-                new int[]{0xB30B0F14, TEXT_DIM});
+        return new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}}, new int[]{INK_DIM, TEXT_DIM});
     }
 
-    /** Makes a focusable control: ringed and slightly larger under the cursor, children follow its state. */
+    /** The colours text and icons had before the cursor turned their control white. */
+    private static final java.util.WeakHashMap<View, Integer> plain = new java.util.WeakHashMap<>();
+
+    /** Makes a focusable control: white, larger and lifted under the cursor; what is on it turns dark. */
     static void focusable(View v) {
         v.setFocusable(true);
         v.setClickable(true);
         v.setOnFocusChangeListener((view, has) -> {
             grow(view, has);
             if (view instanceof ViewGroup) refresh((ViewGroup) view);
+            inkOn(view, has);
         });
         if (v instanceof ViewGroup) refresh((ViewGroup) v);
+    }
+
+    /**
+     * Turns the text and line icons on a control dark while it is white under the cursor, and back after. Ones
+     * that already follow the state ({@link #ink}) are left alone, and so are pictures (app icons, photos).
+     */
+    static void inkOn(View v, boolean dark) {
+        if (v instanceof TextView) {
+            TextView t = (TextView) v;
+            if (t.getTextColors().isStateful() && !plain.containsKey(t)) return;
+            if (dark) {
+                if (!plain.containsKey(t)) plain.put(t, t.getCurrentTextColor());
+                int was = plain.get(t);
+                t.setTextColor(Color.alpha(was) >= 0xF0 ? INK : INK_DIM);
+            } else if (plain.containsKey(t)) {
+                t.setTextColor(plain.remove(t));
+            }
+        } else if (v instanceof ImageView) {
+            ImageView iv = (ImageView) v;
+            if (!(iv.getDrawable() instanceof android.graphics.drawable.VectorDrawable)) return;
+            if (iv.getImageTintList() != null && !plain.containsKey(iv)) return;
+            if (dark) {
+                plain.put(iv, 0);
+                iv.setImageTintList(ColorStateList.valueOf(INK));
+            } else if (plain.remove(iv) != null) {
+                iv.setImageTintList(null);
+            }
+        } else if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) inkOn(g.getChildAt(i), dark);
+        }
+    }
+
+    /** A rounded fill with a rim lit from above: bright at the top edge, fading towards the bottom. */
+    static final class Rim extends Drawable {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF r = new android.graphics.RectF();
+        private final float radius;
+
+        Rim(Context c, int fillColor, float radius) {
+            this.radius = px(c, radius);
+            fill.setColor(fillColor);
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(Math.max(1, px(c, 1)));
+        }
+
+        @Override
+        protected void onBoundsChange(android.graphics.Rect b) {
+            rim.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.bottom,
+                    new int[]{RIM_TOP, RIM_BOTTOM}, null, Shader.TileMode.CLAMP));
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            r.set(getBounds());
+            c.drawRoundRect(r, radius, radius, fill);
+            float h = rim.getStrokeWidth() / 2;
+            r.inset(h, h);
+            c.drawRoundRect(r, radius, radius, rim);
+        }
+
+        @Override
+        public void getOutline(android.graphics.Outline o) {
+            // a capsule's radius is wider than half the height: the outline (and its shadow) needs it clamped
+            o.setRoundRect(getBounds(), Math.min(radius, getBounds().height() / 2f));
+        }
+
+        @Override
+        public void setAlpha(int a) {
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter f) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
+
+    /**
+     * The press under OK, tvOS's "highlighted" state: the white control dips a little while OK is down and springs
+     * back to its focused size on release, so a click is felt even when nothing else moves.
+     */
+    static void press(View v, android.view.KeyEvent e) {
+        if (v == null || !v.isClickable() || e.getRepeatCount() > 0) return;
+        float full = v.getScaleX() > 1f ? v.getScaleX() : 1f;
+        if (e.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+            if (v.getTag(R.id.press_scale) == null) v.setTag(R.id.press_scale, full);
+            float s = (float) v.getTag(R.id.press_scale);
+            v.animate().scaleX(s * 0.95f).scaleY(s * 0.95f).setDuration(90).start();
+        } else if (e.getAction() == android.view.KeyEvent.ACTION_UP && v.getTag(R.id.press_scale) != null) {
+            float s = (float) v.getTag(R.id.press_scale);
+            v.setTag(R.id.press_scale, null);
+            v.animate().scaleX(s).scaleY(s).setInterpolator(FocusRing.EASE).setDuration(180).start();
+        }
+    }
+
+    /** Controls that live inside something tight (a segment in its groove): how far they may grow, in px a side. */
+    private static final java.util.WeakHashMap<View, Integer> roomOf = new java.util.WeakHashMap<>();
+
+    /**
+     * Keeps a control's growth inside {@code units} on every side and its lift low: a segment at the end of a
+     * groove would otherwise grow over the groove's rim.
+     */
+    static void growWithin(View v, float units) {
+        roomOf.put(v, px(v.getContext(), units));
     }
 
     /** The cursor's growth, for a control that handles its own focus (a text field grows its whole pill). */
@@ -166,7 +304,16 @@ final class Ui {
         }
         // small controls grow like a dock tile; wide ones (a whole row) by at most 10 px a side, or they run off the screen
         float s = has ? Math.min(FOCUS_SCALE, 1f + 2f * px(view.getContext(), 10) / Math.max(1, view.getWidth())) : 1f;
-        view.animate().scaleX(s).scaleY(s).translationZ(has ? px(view.getContext(), 6) : 0)
+        Integer room = roomOf.get(view);
+        float lift = px(view.getContext(), 12);
+        if (room != null) {
+            if (has) s = Math.min(s, 1f + 2f * room / Math.max(1, Math.max(view.getWidth(), view.getHeight())));
+            lift = px(view.getContext(), 4);
+        }
+        // the shadow belongs to the white, opaque state only: fading out under translucent glass it shows through
+        // as a dark square, so it goes at once when the cursor leaves
+        if (!has) view.setTranslationZ(0);
+        view.animate().scaleX(s).scaleY(s).translationZ(has ? lift : 0)
                 .setInterpolator(FocusRing.EASE).setDuration(FocusRing.MS).start();
     }
 
@@ -248,7 +395,8 @@ final class Ui {
             sp.topMargin = px(c, 4);
             col.addView(s, sp);
         }
-        col.setLayoutParams(new LinearLayout.LayoutParams(px(c, 112), -2));
+        // 28 wider than the circle: "Fernbedienung" and "TV-Einstellungen" fit on one line
+        col.setLayoutParams(new LinearLayout.LayoutParams(px(c, 140), -2));
         return col;
     }
 
@@ -266,6 +414,7 @@ final class Ui {
         private final Paint tint = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final android.graphics.Matrix m = new android.graphics.Matrix();
         private final android.graphics.RectF r = new android.graphics.RectF();
+        private final int[] at = new int[2];
         private final float radius;
         private Bitmap shaderOf;
 
@@ -296,9 +445,12 @@ final class Ui {
                     y += p.getTop() - (p == v ? 0 : p.getScrollY());
                     p = p.getParent() instanceof View ? (View) p.getParent() : null;
                 }
+                // a window of its own (the quick panel) does not start at the screen's corner: add where it is
                 View root = v.getRootView();
-                m.setScale(root.getWidth() / (float) blur.getWidth(), root.getHeight() / (float) blur.getHeight());
-                m.postTranslate(-x, -y);
+                root.getLocationOnScreen(at);
+                android.util.DisplayMetrics dm = v.getResources().getDisplayMetrics();
+                m.setScale(dm.widthPixels / (float) blur.getWidth(), dm.heightPixels / (float) blur.getHeight());
+                m.postTranslate(-x - at[0], -y - at[1]);
                 paint.getShader().setLocalMatrix(m);
                 c.drawRoundRect(r, radius, radius, paint);
             }
@@ -308,6 +460,12 @@ final class Ui {
                 r.inset(h, h);
                 c.drawRoundRect(r, radius, radius, line);
             }
+        }
+
+        @Override
+        public void getOutline(android.graphics.Outline o) {
+            // the shadow of a lifted card (a menu, a dialog) follows the rounded glass
+            o.setRoundRect(getBounds(), radius);
         }
 
         @Override
@@ -338,7 +496,7 @@ final class Ui {
         LinearLayout p = new LinearLayout(c);
         p.setGravity(Gravity.CENTER_VERTICAL);
         p.setPadding(px(c, 18), 0, px(c, 22), 0);
-        p.setBackground(toggle(c, 26, on));
+        p.setBackground(toggle(c, PILL, on));
         ImageView iv = new ImageView(c);
         iv.setImageResource(iconRes);
         p.addView(iv, new LinearLayout.LayoutParams(px(c, 20), px(c, 20)));
@@ -365,6 +523,13 @@ final class Ui {
             super(c);
         }
 
+        @Override
+        protected void drawableStateChanged() {
+            // its row took or lost the cursor (the state is the row's, duplicated): colours change with it
+            super.drawableStateChanged();
+            invalidate();
+        }
+
         /** 0 at the left end, 1 at the right. */
         void set(float f) {
             fraction = Math.max(0, Math.min(1, f));
@@ -375,11 +540,14 @@ final class Ui {
         protected void onDraw(android.graphics.Canvas canvas) {
             float knob = px(getContext(), 14), track = px(getContext(), 5), cy = getHeight() / 2f;
             float left = knob, right = getWidth() - knob, x = left + (right - left) * fraction;
-            paint.setColor(GLASS_LINE);
+            // on the white row under the cursor the slider is drawn dark, like the text next to it
+            View row = (View) getParent();
+            boolean dark = row != null && row.isFocused();
+            paint.setColor(dark ? 0x290B0F14 : GLASS_LINE);
             canvas.drawRoundRect(left, cy - track, right, cy + track, track, track, paint);
-            paint.setColor(Color.WHITE);
+            paint.setColor(dark ? INK : Color.WHITE);
             canvas.drawRoundRect(left, cy - track, x, cy + track, track, track, paint);
-            paint.setShadowLayer(px(getContext(), 4), 0, px(getContext(), 1), 0x66000000);
+            paint.setShadowLayer(px(getContext(), 4), 0, px(getContext(), 1), dark ? 0x40000000 : 0x66000000);
             canvas.drawCircle(x, cy, knob, paint);
             paint.clearShadowLayer();
         }

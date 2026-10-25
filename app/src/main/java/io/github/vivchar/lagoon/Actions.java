@@ -39,26 +39,26 @@ final class Actions {
         return value != null && value.startsWith("@");
     }
 
-    static String name(String id) {
+    static String name(Context c, String id) {
         switch (id) {
-            case PANEL: return "Панель";
-            case NIGHT: return "Ночь";
-            case SAVER: return "Заставка";
-            case SLEEP: return "Таймер сна";
+            case PANEL: return c.getString(R.string.act_panel);
+            case NIGHT: return c.getString(R.string.night);
+            case SAVER: return c.getString(R.string.saver);
+            case SLEEP: return c.getString(R.string.act_sleep);
             case BLUETOOTH: return "Bluetooth";
-            case HOME: return "На главный";
+            case HOME: return c.getString(R.string.act_home);
             default: return id;
         }
     }
 
     /** The quiet line over the name in the picker: what the action does. */
-    static String verb(String id) {
+    static String verb(Context c, String id) {
         switch (id) {
-            case NIGHT: return "вкл / выкл";
-            case SLEEP: return "запустить";
-            case BLUETOOTH: return "открыть";
-            case HOME: return "выйти";
-            default: return "показать";
+            case NIGHT: return c.getString(R.string.verb_toggle);
+            case SLEEP: return c.getString(R.string.verb_start);
+            case BLUETOOTH: return c.getString(R.string.verb_open);
+            case HOME: return c.getString(R.string.verb_exit);
+            default: return c.getString(R.string.verb_show);
         }
     }
 
@@ -74,7 +74,8 @@ final class Actions {
     }
 
     static void run(Context c, String id) {
-        Context app = c.getApplicationContext();
+        // the toast and the panel are built from this context: in the chosen language, not the TV's
+        Context app = Lang.wrap(c.getApplicationContext());
         switch (id) {
             case PANEL:
                 QuickPanel.toggle(app);
@@ -140,7 +141,7 @@ final class Actions {
     }
 
     static String sleepLabel(Context c, int minutes) {
-        return minutes == 0 ? "Таймер сна" : "Сон через " + minutes + " мин";
+        return minutes == 0 ? c.getString(R.string.act_sleep) : c.getString(R.string.sleep_in, minutes);
     }
 
     /** The label for the running timer, rounded up to a whole minute. */

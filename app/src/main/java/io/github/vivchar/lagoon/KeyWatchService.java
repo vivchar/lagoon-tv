@@ -58,13 +58,18 @@ public class KeyWatchService extends Service {
     }
 
     @Override
+    protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
+
+    @Override
     public void onCreate() {
         super.onCreate();
         mappings = new Mappings(this);
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("watch", "Кнопки пульта", NotificationManager.IMPORTANCE_MIN));
+        nm.createNotificationChannel(new NotificationChannel("watch", getString(R.string.remote_buttons), NotificationManager.IMPORTANCE_MIN));
         Notification n = new Notification.Builder(this, "watch")
-                .setContentTitle("Кнопки пульта")
+                .setContentTitle(getString(R.string.remote_buttons))
                 .setSmallIcon(R.drawable.ic_remote)
                 .build();
         startForeground(1, n);

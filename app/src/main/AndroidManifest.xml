@@ -31,6 +31,10 @@
 
     <!-- Android 11 hides other apps unless asked: the shelf lists every TV app. -->
     <queries>
+        <!-- the VPN button opens whichever VPN app is installed: any VPN app has a VpnService -->
+        <intent>
+            <action android:name="android.net.VpnService" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

@@ -19,7 +19,7 @@ P=io.github.vivchar.lagoon
 adb shell pm grant $P android.permission.READ_LOGS               # кнопки пульта (Netflix, Prime Video)
 adb shell pm grant $P android.permission.WRITE_SECURE_SETTINGS   # выбрать заставку
 adb shell appops set $P WRITE_SETTINGS allow                     # время до заставки
-adb shell appops set $P SYSTEM_ALERT_WINDOW allow                # «Свет 60%» и «Ночь»
+adb shell appops set $P SYSTEM_ALERT_WINDOW allow                # яркость, «Ночь», быстрая панель
 adb shell appops set $P GET_USAGE_STATS allow                    # порядок дока по времени использования
 ```
 
