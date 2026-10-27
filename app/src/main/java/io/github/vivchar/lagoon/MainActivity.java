@@ -141,6 +141,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             });
         }
         testing(getIntent());
+        openItem(getIntent());
     }
 
     /** The language page asked for a restart: when the screen comes back it opens the settings again. */
@@ -266,6 +267,30 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         if (movingPkg != null) cancelMove();
         shelfScroll.smoothScrollTo(0, 0);
         if (shelf.getChildCount() > 0) shelf.getChildAt(0).requestFocus();
+        openItem(intent);
+    }
+
+    /**
+     * A settings item chosen in the quick panel over another app: Home opens Settings and presses OK on it, so it
+     * does exactly what it does there (a hidden one is found on «Скрытые»).
+     */
+    private void openItem(Intent intent) {
+        String id = intent.getStringExtra(Items.OPEN);
+        if (id == null) return;
+        // once: the intent stays with the activity and comes back on recreate()
+        intent.removeExtra(Items.OPEN);
+        root.post(() -> {
+            openPanel();
+            View v = overlay.findViewWithTag("set_" + id);
+            if (v == null && settingsHidden().contains(id)) {
+                openHiddenItems();
+                v = overlay.findViewWithTag("set_" + id);
+            }
+            if (v != null) {
+                v.requestFocus();
+                v.performClick();
+            }
+        });
     }
 
     // ---------------------------------------------------------------- clock, weather, phase
@@ -627,9 +652,25 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             return 0;
         }
 
+        private boolean laidOut;
+
         @Override
         public void requestChildFocus(View child, View focused) {
             super.requestChildFocus(child, focused);
+            // a page redrawn after OK (Ночь, Таймер сна…) puts the cursor back before it has a size: it is shown on layout
+            if (laidOut) reveal(focused, true);
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            if (laidOut) return;
+            laidOut = true;
+            View f = findFocus();
+            if (f != null) reveal(f, false);
+        }
+
+        private void reveal(View focused, boolean smooth) {
             android.graphics.Rect r = new android.graphics.Rect();
             // a round button takes the cursor on its circle, but its name and line under it must show too
             View shown = focused.getParent() instanceof LinearLayout && ((LinearLayout) focused.getParent()).getOrientation() == LinearLayout.VERTICAL
@@ -643,7 +684,9 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             int edge = getVerticalFadingEdgeLength() > 0 && isVerticalFadingEdgeEnabled() ? getVerticalFadingEdgeLength() : 0;
             int top = getScrollY() + getPaddingTop() + edge, bottom = getScrollY() + getHeight() - getPaddingBottom() - edge;
             int d = r.top < top ? r.top - top : r.bottom > bottom ? r.bottom - bottom : 0;
-            if (d != 0) smoothScrollBy(0, d);
+            if (d == 0) return;
+            if (smooth) smoothScrollBy(0, d);
+            else scrollBy(0, d);
         }
     }
 
@@ -1441,9 +1484,15 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         goingBack = true;
         closeOverlay();
         if (tag == "places" || tag == "saver" || tag == "scene" || tag == "calendar" || tag == "language"
-                || tag == "storage" || tag == "about" || tag == "apps" || tag == "weather_units" || tag == "clock") openPanel();
+                || tag == "storage" || tag == "about" || tag == "apps" || tag == "weather_units" || tag == "clock") {
+            if (fromHidden && !settingsHidden().isEmpty()) openHiddenItems();
+            else openPanel();
+        }
         else if (tag == "remote_pick") openRemote();
-        else if (tag == "telegram" || tag == "remote") openPanel();
+        else if (tag == "telegram" || tag == "remote") {
+            if (fromHidden && !settingsHidden().isEmpty()) openHiddenItems();
+            else openPanel();
+        } else if (tag == "hidden_items") openPanel();
         else goingBack = false;
     }
 
@@ -1884,6 +1933,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
 
     /** Home's second page, a whole screen below it. */
     private void openPanel() {
+        fromHidden = false;
         FrameLayout h = host();
         String status = time.getText() + (weather.ready() ? " · " + weather.temp() + "° · " + getString(R.string.sunset_at, weather.sun("sunset")) : "");
         LinearLayout s = page(h, getString(R.string.settings), status, false);
@@ -2032,8 +2082,13 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
 
     private void redrawPanel(String focus) {
         panelFocus = focus;
-        openPanel();
+        // an item used on the hidden page redraws that page, not the settings one under it
+        if (overlay != null && overlay.getTag() == "hidden_items") openHiddenItems();
+        else openPanel();
     }
+
+    /** True while the settings pages were entered from «Скрытые»: Back from them returns there. */
+    private boolean fromHidden;
 
     private LinearLayout settingsTile(String id) {
         switch (id) {
@@ -2120,7 +2175,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
             }
             case "sleep": {
                 long at = Actions.sleepAt(this);
-                return Ui.round(this, R.drawable.ic_timer, getString(R.string.act_sleep), at == 0 ? getString(R.string.state_off) : getString(R.string.sleep_in, (int) Math.ceil((at - System.currentTimeMillis()) / 60000.0)), at != 0, v -> {
+                return Ui.round(this, R.drawable.ic_timer, getString(R.string.act_sleep), at == 0 ? getString(R.string.state_off) : getString(R.string.sleep_short, (int) Math.ceil((at - System.currentTimeMillis()) / 60000.0)), at != 0, v -> {
                     Actions.nextSleep(this);
                     redrawPanel("set_sleep");
                 });
@@ -2281,18 +2336,70 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         View first = null, wanted = null;
         List<Apps.App> all = apps.ordered();
         for (Apps.App a : apps.hiddenApps()) all.add(a);
+        // the apps as the dock shows them, banners in a grid: they are found by their picture, not their name
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(APPS_PER_ROW);
+        grid.setClipChildren(false);
+        grid.setClipToPadding(false);
+        s.addView(grid, new LinearLayout.LayoutParams(-2, -2));
         for (Apps.App a : all) {
-            boolean pinned = apps.pinned(a.pkg), hid = apps.hidden(a.pkg);
-            String state = getString(hid ? R.string.app_hidden : pinned ? R.string.app_pinned : R.string.app_by_use);
-            LinearLayout r = valueRow(a.label, state, v -> appChoices(a, pinned, hid));
-            r.setTag("app_" + a.pkg);
-            s.addView(r);
-            if (first == null) first = r;
-            if (("app_" + a.pkg).equals(focus)) wanted = r;
+            View card = appCard(a, grid.getChildCount());
+            grid.addView(card);
+            View tile = card.findViewWithTag("app_" + a.pkg);
+            if (first == null) first = tile;
+            if (("app_" + a.pkg).equals(focus)) wanted = tile;
         }
         show(h, "apps");
         View f = wanted != null ? wanted : "app_reset".equals(focus) ? reset : first;
         if (f != null) f.requestFocus();
+    }
+
+    private static final int APPS_PER_ROW = 5;
+
+    /** One app of the grid: its dock banner (dimmed when hidden from the dock), the name and what it is there under it. */
+    private View appCard(Apps.App a, int index) {
+        boolean pinned = apps.pinned(a.pkg), hid = apps.hidden(a.pkg);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setClipChildren(false);
+        FrameLayout t = new FrameLayout(this);
+        t.setTag("app_" + a.pkg);
+        t.setFocusable(true);
+        t.setClickable(true);
+        clipRound(t, 18);
+        android.graphics.drawable.Drawable banner = apps.banner(a);
+        ImageView iv = new ImageView(this);
+        if (banner != null) {
+            iv.setImageDrawable(banner);
+            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            t.addView(iv, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            t.setBackgroundColor(0xFF1F2A36);
+            iv.setImageDrawable(apps.icon(a));
+            t.addView(iv, new FrameLayout.LayoutParams(Ui.px(this, 48), Ui.px(this, 48), Gravity.CENTER));
+        }
+        if (hid) t.setAlpha(0.4f);
+        t.setOnFocusChangeListener((v, has) -> v.animate().scaleX(has ? FocusRing.TILE_SCALE : 1f).scaleY(has ? FocusRing.TILE_SCALE : 1f)
+                .translationY(has ? -Ui.px(this, 8) : 0).translationZ(has ? Ui.px(this, 18) : 0)
+                .setInterpolator(FocusRing.EASE).setDuration(FocusRing.MS).start());
+        t.setOnClickListener(v -> appChoices(a, pinned, hid));
+        col.addView(t, new LinearLayout.LayoutParams(Ui.px(this, TILE_W), Ui.px(this, TILE_H)));
+        TextView n = Ui.text(this, a.label, 15, 600, Color.WHITE);
+        n.setSingleLine(true);
+        n.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(Ui.px(this, TILE_W), -2);
+        nl.topMargin = Ui.px(this, 12);
+        col.addView(n, nl);
+        TextView st = Ui.text(this, getString(hid ? R.string.app_hidden : pinned ? R.string.app_pinned : R.string.app_by_use), 15, 400, Ui.TEXT_DIM);
+        st.setSingleLine(true);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(Ui.px(this, TILE_W), -2);
+        sl.topMargin = Ui.px(this, 2);
+        col.addView(st, sl);
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        if (index % APPS_PER_ROW > 0) lp.leftMargin = Ui.px(this, 36);
+        lp.topMargin = Ui.px(this, index < APPS_PER_ROW ? 4 : 28);
+        col.setLayoutParams(lp);
+        return col;
     }
 
     private void appChoices(Apps.App a, boolean pinned, boolean hid) {
@@ -2373,31 +2480,7 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
     }
 
     private String itemName(String id) {
-        switch (id) {
-            case "saver": return getString(R.string.saver_tile);
-            case "scene": return getString(R.string.scene);
-            case "telegram": return "Telegram";
-            case "calendar": return getString(R.string.calendar);
-            case "city": return getString(R.string.city);
-            case "wifi": return "Wi-Fi";
-            case "bluetooth": return "Bluetooth";
-            case "vpn": return "VPN";
-            case "sound": return getString(R.string.sound);
-            case "remote": return getString(R.string.remote_buttons);
-            case "language": return getString(R.string.language);
-            case "storage": return getString(R.string.storage);
-            case "apps": return getString(R.string.apps);
-            case "weather": return getString(R.string.weather);
-            case "clock": return getString(R.string.clock);
-            case "about": return getString(R.string.about);
-            case "refresh": return getString(R.string.refresh);
-            case "reboot": return getString(R.string.reboot);
-            case "night": return getString(R.string.night);
-            case "sleep": return getString(R.string.act_sleep);
-            case "display": return getString(R.string.display);
-            case "cache": return getString(R.string.cache);
-            default: return getString(R.string.tv_settings);
-        }
+        return Items.name(this, id);
     }
 
     /**
@@ -2460,34 +2543,84 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         });
     }
 
-    /** The hidden settings items, each one OK away from coming back. */
+    /**
+     * The hidden settings items as they are on the settings page, tiles over round buttons, and they work the same:
+     * hidden is out of the way, not out of use. A long OK puts one back on the settings page.
+     */
     private void openHiddenItems() {
+        String focus = panelFocus;
+        panelFocus = null;
+        fromHidden = true;
+        List<String> hidden = settingsHidden();
         FrameLayout h = host();
-        LinearLayout s = page(h, getString(R.string.hidden_title), getString(R.string.hidden_items_sub), true);
-        View first = null;
-        boolean top = true;
-        for (String id : settingsHidden()) {
-            LinearLayout r = row();
-            r.setGravity(Gravity.CENTER_VERTICAL);
-            r.setPadding(Ui.px(this, 22), 0, Ui.px(this, 22), 0);
-            r.setBackground(Ui.control(this, 24));
-            r.addView(Ui.text(this, itemName(id), 17, 600, Color.WHITE), new LinearLayout.LayoutParams(0, -2, 1));
-            r.addView(Ui.text(this, getString(R.string.show_again), 16, 500, Ui.TEXT_DIM));
-            Ui.focusable(r);
-            r.setOnClickListener(v -> {
-                setHidden(id, false);
-                goingBack = true;
-                closeOverlay();
-                redrawPanel(settingsHidden().isEmpty() ? null : "hidden");
-            });
-            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(Ui.px(this, 640), Ui.px(this, 64));
-            rl.topMargin = Ui.px(this, top ? 32 : 10);
-            s.addView(r, rl);
-            top = false;
-            if (first == null) first = r;
+        LinearLayout s = page(h, getString(R.string.hidden_title), plural(R.plurals.items, hidden.size()), true);
+        View first = null, wanted = null;
+        LinearLayout r = null;
+        int n = 0;
+        for (String id : TILES) {
+            if (!hidden.contains(id)) continue;
+            LinearLayout t = settingsTile(id);
+            if (t == null) continue;
+            if (n++ % TILES_PER_ROW == 0) {
+                r = row();
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+                rl.topMargin = Ui.px(this, n == 1 ? 32 : 20);
+                s.addView(r, rl);
+            }
+            t.setLayoutParams(new LinearLayout.LayoutParams(Ui.px(this, (1136 - 20 * (TILES_PER_ROW - 1)) / (float) TILES_PER_ROW), Ui.px(this, 140)));
+            unhideOnLongOk(t, id);
+            addSpaced(r, t, 20);
+            if (first == null) first = t;
+            if (("set_" + id).equals(focus)) wanted = t;
         }
+        r = null;
+        n = 0;
+        for (String id : ROUNDS) {
+            if (!hidden.contains(id)) continue;
+            LinearLayout b = settingsRound(id);
+            if (b == null) continue;
+            if (n++ % ROUNDS_PER_ROW == 0) {
+                r = roundRow(s, true);
+                ((LinearLayout.LayoutParams) b.getLayoutParams()).leftMargin = -Ui.px(this, 14);
+                r.addView(b);
+            } else {
+                addSpaced(r, b, 16);
+            }
+            unhideOnLongOk(b.getChildAt(0), id);
+            if (first == null) first = b.getChildAt(0);
+            if (("set_" + id).equals(focus)) wanted = b.getChildAt(0);
+        }
+        TextView hint = Ui.text(this, getString(R.string.hint_hidden), 15, 400, Ui.TEXT_FAINT);
+        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
+        hl.gravity = Gravity.CENTER_HORIZONTAL;
+        hl.topMargin = Ui.px(this, 32);
+        s.addView(hint, hl);
         show(h, "hidden_items");
-        if (first != null) first.requestFocus();
+        View f = wanted != null ? wanted : first;
+        if (f != null) f.requestFocus();
+    }
+
+    /** On the hidden page a long OK offers one thing: back onto the settings page. */
+    private void unhideOnLongOk(View focusable, String id) {
+        focusable.setTag("set_" + id);
+        focusable.setLongClickable(true);
+        focusable.setOnLongClickListener(v -> {
+            dialog(R.drawable.ic_move, itemName(id), getString(R.string.unhide_text), null,
+                    new String[]{getString(R.string.unhide), getString(R.string.cancel)},
+                    new Runnable[]{() -> {
+                        setHidden(id, false);
+                        if (settingsHidden().isEmpty()) {
+                            // nothing left here: back to the settings page, the cursor on the item that came back
+                            goingBack = true;
+                            closeOverlay();
+                            redrawPanel("set_" + id);
+                        } else {
+                            panelFocus = null;
+                            openHiddenItems();
+                        }
+                    }, null}, 0);
+            return true;
+        });
     }
 
     // ---- VPN: whichever VPN app is installed
@@ -3639,38 +3772,36 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         FrameLayout h = host();
         LinearLayout s = page(h, getString(R.string.act_panel), getString(R.string.panel_sub), true);
         section(s, getString(R.string.panel_items));
-        LinearLayout fixed = panelRow(getString(R.string.brightness), getString(R.string.slider_always), true, false);
-        fixed.setFocusable(false);
-        fixed.setAlpha(0.7f);
-        s.addView(fixed);
+        // every item the panel can hold, as the same round buttons it shows them: brighter and «в панели» are in
         List<String> order = Actions.panelOrder(this);
         View first = null, wanted = null;
+        LinearLayout r = null;
+        int n = 0;
         for (String id : order) {
             boolean on = Actions.panelShows(this, id);
-            String sub = Actions.SLEEP.equals(id) ? getString(R.string.sleep_steps) : Actions.verb(this, id);
-            LinearLayout r = panelRow(Actions.name(this, id), id.equals(moving) ? getString(R.string.moving_hint) : sub, on, id.equals(moving));
-            r.setTag("panel_" + id);
-            Ui.focusable(r);
-            r.setOnClickListener(v -> {
-                if (moving != null) {
-                    redrawPanelSettings(id, null);
-                    return;
-                }
-                Actions.setPanelShows(this, id, !on);
-                redrawPanelSettings(id, null);
-            });
-            r.setOnLongClickListener(v -> {
-                redrawPanelSettings(id, id);
+            boolean carried = id.equals(moving);
+            LinearLayout b = Ui.round(this, Actions.is(id) ? Actions.icon(id) : Items.icon(id), Actions.is(id) ? Actions.name(this, id) : Items.name(this, id),
+                    getString(carried ? R.string.moving_short : on ? R.string.in_panel : R.string.switch_off), on, v -> {
+                        if (moving == null) Actions.setPanelShows(this, id, !on);
+                        redrawPanelSettings(id, null);
+                    });
+            View circle = b.getChildAt(0);
+            circle.setTag("panel_" + id);
+            circle.setSelected(carried);
+            circle.setLongClickable(true);
+            circle.setOnLongClickListener(v -> {
+                if (moving == null) redrawPanelSettings(id, id);
                 return true;
             });
-            if (id.equals(moving)) r.setOnKeyListener((v, k, e) -> {
+            if (carried) circle.setOnKeyListener((v, k, e) -> {
                 if (k == KeyEvent.KEYCODE_BACK) {
                     if (e.getAction() == KeyEvent.ACTION_UP) redrawPanelSettings(id, null);
                     return true;
                 }
-                if (k != KeyEvent.KEYCODE_DPAD_UP && k != KeyEvent.KEYCODE_DPAD_DOWN) return false;
+                if (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+                if (k != KeyEvent.KEYCODE_DPAD_LEFT && k != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
                 if (e.getAction() == KeyEvent.ACTION_DOWN) {
-                    int i = order.indexOf(id), j = i + (k == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+                    int i = order.indexOf(id), j = i + (k == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                     if (j >= 0 && j < order.size()) {
                         java.util.Collections.swap(order, i, j);
                         Actions.setPanelOrder(this, order);
@@ -3679,15 +3810,19 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
                 }
                 return true;
             });
-            LinearLayout.LayoutParams rl = (LinearLayout.LayoutParams) r.getLayoutParams();
-            rl.topMargin = Ui.px(this, 10);
-            s.addView(r);
-            if (first == null) first = r;
-            if (id.equals(focus)) wanted = r;
+            if (n++ % ROUNDS_PER_ROW == 0) {
+                r = roundRow(s, n > 1);
+                ((LinearLayout.LayoutParams) b.getLayoutParams()).leftMargin = -Ui.px(this, 14);
+                r.addView(b);
+            } else {
+                addSpaced(r, b, 16);
+            }
+            if (first == null) first = circle;
+            if (id.equals(focus)) wanted = circle;
         }
-        TextView tip = label(getString(R.string.panel_tip));
+        TextView tip = label(getString(moving != null ? R.string.settings_move_hint : R.string.panel_tip));
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
-        tl.topMargin = Ui.px(this, 16);
+        tl.topMargin = Ui.px(this, 20);
         s.addView(tip, tl);
 
         section(s, getString(R.string.hide_after));
@@ -3717,31 +3852,6 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
         openPanelSettings(focus, moving);
     }
 
-    /**
-     * One item of the panel: its name and a line, and its state in words on the right, as tvOS settings rows
-     * do ("On" / "Off"; there are no switches on Apple TV). White while it is being moved.
-     */
-    private LinearLayout panelRow(String name, String sub, boolean on, boolean moving) {
-        LinearLayout r = row();
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(Ui.px(this, 22), 0, Ui.px(this, 20), 0);
-        r.setBackground(Ui.control(this, 24));
-        r.setSelected(moving);
-        TextView n = Ui.text(this, name, 16, 600, Color.WHITE);
-        n.setTextColor(Ui.ink());
-        r.addView(n, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView l = Ui.text(this, sub, 15, 400, Ui.TEXT_DIM);
-        l.setTextColor(Ui.inkDim());
-        r.addView(l);
-        TextView state = Ui.text(this, getString(on ? R.string.switch_on : R.string.switch_off), 16, 600, Color.WHITE);
-        state.setTextColor(Ui.ink());
-        state.setGravity(Gravity.END);
-        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(Ui.px(this, 64), -2);
-        sl.leftMargin = Ui.px(this, 18);
-        r.addView(state, sl);
-        r.setLayoutParams(new LinearLayout.LayoutParams(Ui.px(this, 640), Ui.px(this, 56)));
-        return r;
-    }
 
     // ---- Telegram settings
 

@@ -164,13 +164,17 @@ final class Actions {
 
     /** Every item in the panel's order, the hidden ones too. */
     static List<String> panelOrder(Context c) {
+        // the actions first, then every settings item: the panel can hold any of them as a round button
+        List<String> all = new ArrayList<>(Arrays.asList(PANEL_ITEMS));
+        all.addAll(Arrays.asList(Items.SETTINGS));
         String saved = prefs(c).getString("panel_order", null);
         List<String> out = new ArrayList<>();
         if (saved != null) {
-            for (String s : saved.split(",")) if (Arrays.asList(PANEL_ITEMS).contains(s) && !out.contains(s)) out.add(s);
+            for (String s : saved.split(",")) if (all.contains(s) && !out.contains(s)) out.add(s);
         }
         // items added in a later version go to the end
-        for (String s : PANEL_ITEMS) if (!out.contains(s)) out.add(s);
+        for (String s : all) if (!out.contains(s)) out.add(s);
+        out.removeIf(id -> !Items.available(c, id));
         return out;
     }
 
@@ -178,12 +182,14 @@ final class Actions {
         prefs(c).edit().putString("panel_order", String.join(",", order)).apply();
     }
 
+    /** The actions are in the panel until taken out; settings items only once put in. */
     static boolean panelShows(Context c, String id) {
-        return !prefs(c).getBoolean("panel_off_" + id, false);
+        return is(id) ? !prefs(c).getBoolean("panel_off_" + id, false) : prefs(c).getBoolean("panel_on_" + id, false);
     }
 
     static void setPanelShows(Context c, String id, boolean on) {
-        prefs(c).edit().putBoolean("panel_off_" + id, !on).apply();
+        if (is(id)) prefs(c).edit().putBoolean("panel_off_" + id, !on).apply();
+        else prefs(c).edit().putBoolean("panel_on_" + id, on).apply();
     }
 
     /** Seconds without a key before the panel hides itself. */

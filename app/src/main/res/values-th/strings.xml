@@ -186,14 +186,13 @@
     <string name="night_on">กลางคืน · เปิด</string>
     <string name="overlay_permission">แผงต้องได้รับสิทธิ์แสดงทับแอปอื่น: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="quick_settings">การตั้งค่าด่วน</string>
-    <string name="quick_hint">← → ความสว่าง · Back — ปิด</string>
     <string name="brightness">ความสว่าง</string>
     <string name="panel_sub">เมื่อกด Prime Video ค้าง</string>
     <string name="panel_items">รายการ</string>
     <string name="slider_always">แถบเลื่อน · อยู่แรกเสมอ</string>
     <string name="sleep_steps">15 · 30 · 45 · 60 · 90 นาที</string>
     <string name="moving_hint">↑ ↓ — ย้าย, OK — วาง</string>
-    <string name="panel_tip">OK — แสดงหรือซ่อน · กด OK ค้าง — หยิบแล้วเลื่อนด้วยลูกศร</string>
+    <string name="panel_tip">OK — เพิ่มในแผงหรือเอาออก  ·  กด OK ค้าง — ย้าย</string>
     <string name="hide_after">ซ่อนหลัง</string>
     <string name="sec_3">3 วิ</string>
     <string name="sec_5">5 วิ</string>
@@ -364,4 +363,14 @@
     <plurals name="days">
         <item quantity="other">%1$d วัน</item>
     </plurals>
+    <string name="unhide">กลับไปที่การตั้งค่า</string>
+    <string name="unhide_text">รายการจะกลับมาแสดงในหน้าการตั้งค่า</string>
+    <string name="hint_hidden">OK — เปิด  ·  กด OK ค้าง — กลับไปที่การตั้งค่า</string>
+    <plurals name="items">
+        <item quantity="other">%1$d รายการ</item>
+    </plurals>
+    <string name="refreshed">กำลังอัปเดตสภาพอากาศ ปฏิทิน และอัลบั้ม</string>
+    <string name="sleep_short">อีก %1$d นาที</string>
+    <string name="in_panel">ในแผง</string>
+    <string name="moving_short">กำลังย้าย</string>
 </resources>

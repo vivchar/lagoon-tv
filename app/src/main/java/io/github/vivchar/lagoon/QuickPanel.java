@@ -122,32 +122,38 @@ final class QuickPanel {
         bl.topMargin = Ui.px(c, 22);
         card.addView(bright, bl);
 
-        LinearLayout pills = new LinearLayout(c);
-        pills.setClipChildren(false);
-        pills.setClipToPadding(false);
+        // the round buttons of the settings page, seven to a row like there
+        LinearLayout row = null;
+        View firstItem = null;
+        int n = 0;
         for (String id : Actions.panelOrder(c)) {
             if (!Actions.panelShows(c, id)) continue;
-            View p = item(c, id);
-            p.setTag(id);
-            LinearLayout.LayoutParams pl = (LinearLayout.LayoutParams) p.getLayoutParams();
-            if (pills.getChildCount() > 0) pl.leftMargin = Ui.px(c, 14);
-            pills.addView(p, pl);
+            LinearLayout b = item(c, id);
+            b.getChildAt(0).setTag(id);
+            LinearLayout.LayoutParams bl2 = (LinearLayout.LayoutParams) b.getLayoutParams();
+            if (n++ % PER_ROW == 0) {
+                row = new LinearLayout(c);
+                row.setClipChildren(false);
+                row.setClipToPadding(false);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-1, -2);
+                rl.topMargin = Ui.px(c, n == 1 ? 22 : 18);
+                card.addView(row, rl);
+                // the buttons are 28 units wider than their circle: the first leans out to keep its circle in line
+                bl2.leftMargin = -Ui.px(c, 14);
+            } else {
+                bl2.leftMargin = Ui.px(c, 16);
+            }
+            row.addView(b, bl2);
+            if (firstItem == null) firstItem = b.getChildAt(0);
         }
-        if (pills.getChildCount() > 0) {
+        if (firstItem != null) {
             // ↓ from the slider starts the row at its first item, not under wherever the knob happens to be
-            View firstPill = pills.getChildAt(0);
-            firstPill.setId(View.generateViewId());
-            bright.setNextFocusDownId(firstPill.getId());
-            LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-1, -2);
-            pl.topMargin = Ui.px(c, 22);
-            card.addView(pills, pl);
+            firstItem.setId(View.generateViewId());
+            bright.setNextFocusDownId(firstItem.getId());
         }
 
-        // 16 units is the 23 pt floor of TV text at 1080p: smaller can't be read from the couch
-        TextView hint = Ui.text(c, c.getString(R.string.quick_hint), 16, 400, Ui.TEXT_FAINT);
-        LinearLayout.LayoutParams hl = new LinearLayout.LayoutParams(-2, -2);
-        hl.topMargin = Ui.px(c, 18);
-        card.addView(hint, hl);
+        // no hint line under the buttons: ←/→ on a slider and Back to close need no reading, and the panel keeps
+        // as little of the picture covered as it can
         return root;
     }
 
@@ -194,11 +200,21 @@ final class QuickPanel {
         return r;
     }
 
-    private static View item(Context c, String id) {
+    private static final int PER_ROW = 7;
+
+    /** One item: the same round button as on the settings page, its state in words under it. */
+    static LinearLayout item(Context c, String id) {
+        if (!Actions.is(id)) {
+            return Ui.round(c, Items.icon(id), Items.name(c, id), Items.state(c, id), Items.on(c, id), v -> {
+                hide();
+                Items.run(c, id);
+            });
+        }
         boolean on = Actions.NIGHT.equals(id) ? Dim.night(c) : Actions.SLEEP.equals(id) && Actions.sleepAt(c) != 0;
-        // switched on says so in words too, not only in blue
-        String label = Actions.SLEEP.equals(id) ? Actions.sleepLabel(c) : Actions.NIGHT.equals(id) && on ? c.getString(R.string.night_on) : Actions.name(c, id);
-        return Ui.pill(c, Actions.icon(id), label, on, v -> {
+        // switched on says so in words too, not only in brighter glass
+        String sub = Actions.NIGHT.equals(id) ? c.getString(on ? R.string.state_on : R.string.state_off)
+                : Actions.SLEEP.equals(id) ? (on ? c.getString(R.string.sleep_short, sleepMinutes(c)) : c.getString(R.string.state_off)) : null;
+        return Ui.round(c, Actions.icon(id), Actions.name(c, id), sub, on, v -> {
             switch (id) {
                 case Actions.NIGHT:
                     Dim.toggleNight(c);
@@ -229,6 +245,10 @@ final class QuickPanel {
         old.addView(card);
         View f = old.findViewWithTag(focus);
         if (f != null) f.requestFocus();
+    }
+
+    private static int sleepMinutes(Context c) {
+        return (int) Math.ceil((Actions.sleepAt(c) - System.currentTimeMillis()) / 60000.0);
     }
 
     private static WindowManager wm(Context c) {

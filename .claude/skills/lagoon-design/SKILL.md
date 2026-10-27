@@ -113,6 +113,8 @@ mix is the current clip's picture (they switch without a crossfade).
   поставить»), arrows move it along its row (↑/↓ in vertical lists), OK or Back put it down.
   Whatever can be hidden must come back: a dashed item at the end of the row («Скрытые · N»)
   appears only while something is hidden.
+- The quick panel has no hint line (owner's request): it covers a playing picture, and ←/→ on its slider and
+  Back are obvious. Everywhere else:
 - **A hidden gesture is always written down**: a page with long OK says so in its bottom hint
   («↑ или Back — на главный · удерживайте OK — переставить или скрыть»); a mode says how to leave it.
 - **Dashed = not there**: dashed outline for «Добавить кнопку», «Скрытые». Under the cursor they

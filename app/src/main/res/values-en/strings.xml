@@ -186,14 +186,13 @@
     <string name="night_on">Night · on</string>
     <string name="overlay_permission">The panel needs permission to draw over other apps: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="quick_settings">Quick settings</string>
-    <string name="quick_hint">← → brightness · Back — close</string>
     <string name="brightness">Brightness</string>
     <string name="panel_sub">on holding Prime Video</string>
     <string name="panel_items">Items</string>
     <string name="slider_always">slider · always first</string>
     <string name="sleep_steps">15 · 30 · 45 · 60 · 90 min</string>
     <string name="moving_hint">↑ ↓ — move, OK — put down</string>
-    <string name="panel_tip">OK — show or hide · long OK — pick up and move with the arrows</string>
+    <string name="panel_tip">OK — add to the panel or remove  ·  hold OK — move</string>
     <string name="hide_after">Hide after</string>
     <string name="sec_3">3 s</string>
     <string name="sec_5">5 s</string>
@@ -372,4 +371,15 @@
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
+    <string name="unhide">Back to Settings</string>
+    <string name="unhide_text">The item shows on the settings page again.</string>
+    <string name="hint_hidden">OK — open  ·  hold OK — back to Settings</string>
+    <plurals name="items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="refreshed">Updating weather, calendar and album</string>
+    <string name="sleep_short">in %1$d min</string>
+    <string name="in_panel">in panel</string>
+    <string name="moving_short">moving</string>
 </resources>

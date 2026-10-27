@@ -188,14 +188,13 @@
     <string name="night_on">Ночь · вкл</string>
     <string name="overlay_permission">Панели нужно разрешение поверх других окон: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="quick_settings">Быстрые настройки</string>
-    <string name="quick_hint">← → яркость · Back — закрыть</string>
     <string name="brightness">Яркость</string>
     <string name="panel_sub">по удержанию Prime Video</string>
     <string name="panel_items">Пункты</string>
     <string name="slider_always">бегунок · всегда первая</string>
     <string name="sleep_steps">15 · 30 · 45 · 60 · 90 мин</string>
     <string name="moving_hint">↑ ↓ — двигать, OK — поставить</string>
-    <string name="panel_tip">OK — показать или скрыть · долгий OK — взять и двигать стрелками</string>
+    <string name="panel_tip">OK — добавить в панель или убрать  ·  удерживайте OK — переставить</string>
     <string name="hide_after">Скрывать через</string>
     <string name="sec_3">3 с</string>
     <string name="sec_5">5 с</string>
@@ -390,4 +389,17 @@
         <item quantity="many">%1$d дней</item>
         <item quantity="other">%1$d дня</item>
     </plurals>
+    <string name="unhide">Вернуть в настройки</string>
+    <string name="unhide_text">Пункт снова появится на странице настроек.</string>
+    <string name="hint_hidden">OK — открыть  ·  удерживайте OK — вернуть в настройки</string>
+    <plurals name="items">
+        <item quantity="one">%1$d пункт</item>
+        <item quantity="few">%1$d пункта</item>
+        <item quantity="many">%1$d пунктов</item>
+        <item quantity="other">%1$d пункта</item>
+    </plurals>
+    <string name="refreshed">Погода, календарь и альбом обновляются</string>
+    <string name="sleep_short">через %1$d мин</string>
+    <string name="in_panel">в панели</string>
+    <string name="moving_short">двигаю</string>
 </resources>

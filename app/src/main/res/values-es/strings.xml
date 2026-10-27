@@ -186,14 +186,13 @@
     <string name="night_on">Noche · sí</string>
     <string name="overlay_permission">El panel necesita permiso para mostrarse sobre otras apps: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="quick_settings">Ajustes rápidos</string>
-    <string name="quick_hint">← → brillo · Back — cerrar</string>
     <string name="brightness">Brillo</string>
     <string name="panel_sub">al mantener Prime Video</string>
     <string name="panel_items">Elementos</string>
     <string name="slider_always">deslizador · siempre primero</string>
     <string name="sleep_steps">15 · 30 · 45 · 60 · 90 min</string>
     <string name="moving_hint">↑ ↓ — mover, OK — soltar</string>
-    <string name="panel_tip">OK — mostrar u ocultar · OK largo — coger y mover con las flechas</string>
+    <string name="panel_tip">OK — añadir al panel o quitar  ·  mantén OK — mover</string>
     <string name="hide_after">Ocultar tras</string>
     <string name="sec_3">3 s</string>
     <string name="sec_5">5 s</string>
@@ -372,4 +371,15 @@
         <item quantity="one">%1$d día</item>
         <item quantity="other">%1$d días</item>
     </plurals>
+    <string name="unhide">Volver a Ajustes</string>
+    <string name="unhide_text">El elemento vuelve a la página de ajustes.</string>
+    <string name="hint_hidden">OK — abrir  ·  mantén OK — volver a Ajustes</string>
+    <plurals name="items">
+        <item quantity="one">%1$d elemento</item>
+        <item quantity="other">%1$d elementos</item>
+    </plurals>
+    <string name="refreshed">Actualizando tiempo, calendario y álbum</string>
+    <string name="sleep_short">en %1$d min</string>
+    <string name="in_panel">en el panel</string>
+    <string name="moving_short">moviendo</string>
 </resources>

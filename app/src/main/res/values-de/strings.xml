@@ -186,14 +186,13 @@
     <string name="night_on">Nacht · an</string>
     <string name="overlay_permission">Das Panel braucht die Erlaubnis, über anderen Apps zu erscheinen: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="quick_settings">Schnelleinstellungen</string>
-    <string name="quick_hint">← → Helligkeit · Back — schließen</string>
     <string name="brightness">Helligkeit</string>
     <string name="panel_sub">beim Halten von Prime Video</string>
     <string name="panel_items">Einträge</string>
     <string name="slider_always">Regler · immer zuerst</string>
     <string name="sleep_steps">15 · 30 · 45 · 60 · 90 Min.</string>
     <string name="moving_hint">↑ ↓ — verschieben, OK — ablegen</string>
-    <string name="panel_tip">OK — ein- oder ausblenden · OK halten — aufnehmen und mit den Pfeilen verschieben</string>
+    <string name="panel_tip">OK — ins Panel oder entfernen  ·  OK halten — verschieben</string>
     <string name="hide_after">Ausblenden nach</string>
     <string name="sec_3">3 s</string>
     <string name="sec_5">5 s</string>
@@ -372,4 +371,15 @@
         <item quantity="one">%1$d Tag</item>
         <item quantity="other">%1$d Tage</item>
     </plurals>
+    <string name="unhide">Zurück in die Einstellungen</string>
+    <string name="unhide_text">Der Eintrag erscheint wieder auf der Einstellungsseite.</string>
+    <string name="hint_hidden">OK — öffnen  ·  OK halten — zurück in die Einstellungen</string>
+    <plurals name="items">
+        <item quantity="one">%1$d Eintrag</item>
+        <item quantity="other">%1$d Einträge</item>
+    </plurals>
+    <string name="refreshed">Wetter, Kalender und Album werden aktualisiert</string>
+    <string name="sleep_short">in %1$d min</string>
+    <string name="in_panel">im Panel</string>
+    <string name="moving_short">verschieben</string>
 </resources>

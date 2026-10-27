@@ -186,14 +186,13 @@
     <string name="night_on">夜间 · 开</string>
     <string name="overlay_permission">面板需要“显示在其他应用上层”的权限：adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
     <string name="quick_settings">快捷设置</string>
-    <string name="quick_hint">← → 亮度 · Back — 关闭</string>
     <string name="brightness">亮度</string>
     <string name="panel_sub">长按 Prime Video 时</string>
     <string name="panel_items">项目</string>
     <string name="slider_always">滑块 · 始终在最前</string>
     <string name="sleep_steps">15 · 30 · 45 · 60 · 90 分钟</string>
     <string name="moving_hint">↑ ↓ — 移动，OK — 放下</string>
-    <string name="panel_tip">OK — 显示或隐藏 · 长按 OK — 拿起并用方向键移动</string>
+    <string name="panel_tip">OK — 加入面板或移除  ·  长按 OK — 移动</string>
     <string name="hide_after">自动隐藏</string>
     <string name="sec_3">3 秒</string>
     <string name="sec_5">5 秒</string>
@@ -364,4 +363,14 @@
     <plurals name="days">
         <item quantity="other">%1$d 天</item>
     </plurals>
+    <string name="unhide">放回设置</string>
+    <string name="unhide_text">该项会重新显示在设置页。</string>
+    <string name="hint_hidden">OK — 打开  ·  长按 OK — 放回设置</string>
+    <plurals name="items">
+        <item quantity="other">%1$d 项</item>
+    </plurals>
+    <string name="refreshed">正在更新天气、日历和相册</string>
+    <string name="sleep_short">%1$d 分钟后</string>
+    <string name="in_panel">在面板中</string>
+    <string name="moving_short">移动中</string>
 </resources>
