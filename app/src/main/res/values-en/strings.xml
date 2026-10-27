@@ -185,7 +185,6 @@
     <string name="sleep_in">Sleep in %1$d min</string>
     <string name="night_on">Night · on</string>
     <string name="overlay_permission">The panel needs permission to draw over other apps: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
-    <string name="quick_settings">Quick settings</string>
     <string name="brightness">Brightness</string>
     <string name="panel_sub">on holding Prime Video</string>
     <string name="panel_items">Items</string>

@@ -185,7 +185,6 @@
     <string name="sleep_in">ปิดใน %1$d นาที</string>
     <string name="night_on">กลางคืน · เปิด</string>
     <string name="overlay_permission">แผงต้องได้รับสิทธิ์แสดงทับแอปอื่น: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
-    <string name="quick_settings">การตั้งค่าด่วน</string>
     <string name="brightness">ความสว่าง</string>
     <string name="panel_sub">เมื่อกด Prime Video ค้าง</string>
     <string name="panel_items">รายการ</string>

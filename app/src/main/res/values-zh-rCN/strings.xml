@@ -185,7 +185,6 @@
     <string name="sleep_in">%1$d 分钟后休眠</string>
     <string name="night_on">夜间 · 开</string>
     <string name="overlay_permission">面板需要“显示在其他应用上层”的权限：adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
-    <string name="quick_settings">快捷设置</string>
     <string name="brightness">亮度</string>
     <string name="panel_sub">长按 Prime Video 时</string>
     <string name="panel_items">项目</string>

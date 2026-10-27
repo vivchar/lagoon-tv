@@ -14,7 +14,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.Date;
 
 /**
  * The quick panel: a card at the bottom of the screen over whatever is playing, opened by a remote button
@@ -56,7 +55,7 @@ final class QuickPanel {
         // it rises from the bottom edge instead of appearing at once
         view.setAlpha(0f);
         view.setTranslationY(Ui.px(app, 40));
-        view.animate().alpha(1f).translationY(0).setInterpolator(FocusRing.EASE).setDuration(240).start();
+        view.animate().alpha(1f).translationY(0).setInterpolator(FocusRing.EASE).setDuration(240).withLayer().start();
         view.findViewWithTag("brightness").requestFocus();
         // the panel is dimmed like everything else, so it has the dock's tone and the slider shows its effect on
         // the panel itself: the dark layer goes back on top of it
@@ -70,8 +69,12 @@ final class QuickPanel {
         View gone = view;
         Context app = gone.getContext();
         view = null;
+        // the button under the cursor casts a shadow of its own: faded apart from the panel it showed through as a
+        // dark square for a frame. Its lift goes at once, and the panel fades as one layer
+        View f = gone.findFocus();
+        if (f != null) f.setTranslationZ(0);
         // and sinks back out of sight; the window goes once it is down
-        gone.animate().alpha(0f).translationY(Ui.px(app, 40)).setDuration(180).withEndAction(() -> {
+        gone.animate().alpha(0f).translationY(Ui.px(app, 40)).setDuration(180).withLayer().withEndAction(() -> {
             if (gone.isAttachedToWindow()) wm(app).removeView(gone);
             Dim.apply(app);
         }).start();
@@ -111,16 +114,9 @@ final class QuickPanel {
         else card.setBackground(new Ui.Rim(c, Ui.PANEL_OVER_APP, Ui.RADIUS_PANEL));
         root.addView(card, new FrameLayout.LayoutParams(-1, -2));
 
-        LinearLayout head = new LinearLayout(c);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(Ui.text(c, c.getString(R.string.quick_settings), 24, 600, Color.WHITE), new LinearLayout.LayoutParams(0, -2, 1));
-        head.addView(Ui.text(c, Lang.clock(c, new Date()), 16, 500, Ui.TEXT_DIM));
-        card.addView(head);
-
+        // no title line either: the slider and the buttons say what this is, and the picture behind stays in view
         View bright = brightness(c);
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-1, Ui.px(c, 72));
-        bl.topMargin = Ui.px(c, 22);
-        card.addView(bright, bl);
+        card.addView(bright, new LinearLayout.LayoutParams(-1, Ui.px(c, 72)));
 
         // the round buttons of the settings page, seven to a row like there
         LinearLayout row = null;

@@ -187,7 +187,6 @@
     <string name="sleep_in">Сон через %1$d мин</string>
     <string name="night_on">Ночь · вкл</string>
     <string name="overlay_permission">Панели нужно разрешение поверх других окон: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
-    <string name="quick_settings">Быстрые настройки</string>
     <string name="brightness">Яркость</string>
     <string name="panel_sub">по удержанию Prime Video</string>
     <string name="panel_items">Пункты</string>

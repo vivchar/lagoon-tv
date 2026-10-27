@@ -13,8 +13,21 @@ import android.widget.Toast;
  * of Lagoon opens goes through {@link #OPEN} to Home, the rest runs right here.
  */
 final class Items {
-    /** Intent extra for {@link MainActivity}: the settings item to open, as if OK was pressed on it. */
+    /** Intent extra for {@link MainActivity}: a settings item waits in {@link #takeOpen()}. Carries no id itself. */
     static final String OPEN = "open";
+
+    /**
+     * The item the panel asked Home to open. Home is exported (it is the launcher), so any app could send it an
+     * extra; only this process can set the field, and the id is checked against {@link #SETTINGS} on the way out.
+     */
+    private static String pendingOpen;
+
+    /** The item to open, once; null when nothing in this process asked for one. */
+    static String takeOpen() {
+        String id = pendingOpen;
+        pendingOpen = null;
+        return id != null && java.util.Arrays.asList(SETTINGS).contains(id) ? id : null;
+    }
 
     /**
      * Settings items the panel can take besides its actions. Bluetooth, «Ночь», the sleep timer and the screensaver are
@@ -140,7 +153,8 @@ final class Items {
             }
             default:
                 // a page of Lagoon: Home opens it, as OK on the settings page would
-                start(c, new Intent(c, MainActivity.class).putExtra(OPEN, id));
+                pendingOpen = id;
+                start(c, new Intent(c, MainActivity.class).putExtra(OPEN, true));
         }
     }
 

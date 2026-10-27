@@ -185,7 +185,6 @@
     <string name="sleep_in">Sueño en %1$d min</string>
     <string name="night_on">Noche · sí</string>
     <string name="overlay_permission">El panel necesita permiso para mostrarse sobre otras apps: adb shell appops set %1$s SYSTEM_ALERT_WINDOW allow</string>
-    <string name="quick_settings">Ajustes rápidos</string>
     <string name="brightness">Brillo</string>
     <string name="panel_sub">al mantener Prime Video</string>
     <string name="panel_items">Elementos</string>

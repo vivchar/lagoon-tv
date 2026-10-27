@@ -275,10 +275,12 @@ public class MainActivity extends Activity implements Weather.Listener, Telegram
      * does exactly what it does there (a hidden one is found on «Скрытые»).
      */
     private void openItem(Intent intent) {
-        String id = intent.getStringExtra(Items.OPEN);
-        if (id == null) return;
+        if (!intent.hasExtra(Items.OPEN)) return;
         // once: the intent stays with the activity and comes back on recreate()
         intent.removeExtra(Items.OPEN);
+        // the id comes from inside this process, never from the intent: Home is exported to every app
+        String id = Items.takeOpen();
+        if (id == null) return;
         root.post(() -> {
             openPanel();
             View v = overlay.findViewWithTag("set_" + id);
