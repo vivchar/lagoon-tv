@@ -95,7 +95,7 @@ final class Apps {
         Map<String, android.app.usage.UsageStats> use = usage();
         Comparator<App> cmp = (a, b) -> Long.compare(timeUsed(b, use), timeUsed(a, use));
         List<App> pins = new ArrayList<>(), rest = new ArrayList<>();
-        for (App a : all) (pinned(a.pkg) ? pins : rest).add(a);
+        for (App a : all) if (!hidden(a.pkg)) (pinned(a.pkg) ? pins : rest).add(a);
         pins.sort(Comparator.<App>comparingInt(a -> prefs.getInt("pos_" + a.pkg, 0)).thenComparing(a -> a.label.toLowerCase()));
         rest.sort(cmp.thenComparing(a -> a.label.toLowerCase()));
         pins.addAll(rest);
@@ -133,6 +133,30 @@ final class Apps {
         pins.add(Math.max(0, Math.min(pins.size(), pos)), pkg);
         SharedPreferences.Editor e = prefs.edit();
         for (int i = 0; i < pins.size(); i++) e.putInt("pos_" + pins.get(i), i);
+        e.apply();
+    }
+
+    /** Apps kept out of the dock, by name. */
+    List<App> hiddenApps() {
+        List<App> out = new ArrayList<>();
+        for (App a : installed()) if (hidden(a.pkg)) out.add(a);
+        out.sort(Comparator.comparing(a -> a.label.toLowerCase()));
+        return out;
+    }
+
+    boolean hidden(String pkg) {
+        return prefs.getBoolean("hide_" + pkg, false);
+    }
+
+    void setHidden(String pkg, boolean on) {
+        if (on) prefs.edit().putBoolean("hide_" + pkg, true).apply();
+        else prefs.edit().remove("hide_" + pkg).apply();
+    }
+
+    /** Forgets the launches counted here; the system's own record of use stays, it is not ours to clear. */
+    void resetCounts() {
+        SharedPreferences.Editor e = prefs.edit();
+        for (String k : prefs.getAll().keySet()) if (k.startsWith("count_") || k.startsWith("last_")) e.remove(k);
         e.apply();
     }
 

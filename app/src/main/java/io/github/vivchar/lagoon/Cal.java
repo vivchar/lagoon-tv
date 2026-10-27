@@ -174,6 +174,12 @@ final class Cal {
         new Thread(() -> refresh(app, done), "calendar").start();
     }
 
+    /** Reads every shown calendar again now, whatever the schedule says. */
+    static void refreshNow(Context c, Runnable done) {
+        Context app = c.getApplicationContext();
+        new Thread(() -> refresh(app, done), "calendar").start();
+    }
+
     private static void refresh(Context c, Runnable done) {
         List<Event> all = new ArrayList<>();
         String untitled = Lang.wrap(c).getString(R.string.event_untitled);

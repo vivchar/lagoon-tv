@@ -237,13 +237,15 @@ final class Weather {
         new Thread(() -> {
             try {
                 String q = "latitude=" + lat + "&longitude=" + lon + "&timezone=auto";
-                JSONObject f = get("https://api.open-meteo.com/v1/forecast?" + q
+                // the service converts: the readings below need no unit of their own
+                String unit = fahrenheit(ctx) ? "&temperature_unit=fahrenheit" : "";
+                JSONObject f = get("https://api.open-meteo.com/v1/forecast?" + q + unit
                         + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,uv_index"
                         + "&hourly=temperature_2m,precipitation_probability,weather_code"
                         + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&forecast_days=6");
                 JSONObject m = null, a = null;
                 try {
-                    m = get("https://marine-api.open-meteo.com/v1/marine?" + q + "&current=sea_surface_temperature,wave_height");
+                    m = get("https://marine-api.open-meteo.com/v1/marine?" + q + unit + "&current=sea_surface_temperature,wave_height");
                 } catch (Exception e) {
                     Log.w("Weather", "marine", e);
                 }
@@ -286,6 +288,25 @@ final class Weather {
 
     // ---------------------------------------------------------------- readings
 
+    // ---- units
+
+    static boolean fahrenheit(Context c) {
+        return c.getSharedPreferences("weather", Context.MODE_PRIVATE).getBoolean("fahrenheit", false);
+    }
+
+    static void setFahrenheit(Context c, boolean on) {
+        c.getSharedPreferences("weather", Context.MODE_PRIVATE).edit().putBoolean("fahrenheit", on).apply();
+    }
+
+    /** Wind in km/h instead of m/s. The forecast always comes in km/h; m/s is worked out here. */
+    static boolean kmh(Context c) {
+        return c.getSharedPreferences("weather", Context.MODE_PRIVATE).getBoolean("kmh", false);
+    }
+
+    static void setKmh(Context c, boolean on) {
+        c.getSharedPreferences("weather", Context.MODE_PRIVATE).edit().putBoolean("kmh", on).apply();
+    }
+
     boolean ready() {
         return forecast != null && forecast.has("current");
     }
@@ -310,7 +331,8 @@ final class Weather {
         JSONObject c = forecast.optJSONObject("current");
         String[] dirs = ctx.getResources().getStringArray(R.array.wind_dirs);
         int d = (int) Math.round(c.optDouble("wind_direction_10m") / 45) % 8;
-        return ctx.getString(R.string.wind_fmt, dirs[d], Math.round(c.optDouble("wind_speed_10m") / 3.6));
+        double kmh = c.optDouble("wind_speed_10m");
+        return ctx.getString(kmh(ctx) ? R.string.wind_fmt_kmh : R.string.wind_fmt, dirs[d], Math.round(kmh(ctx) ? kmh : kmh / 3.6));
     }
 
     double uv() {

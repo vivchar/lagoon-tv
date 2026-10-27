@@ -35,7 +35,7 @@ adb -s emulator-5554 shell input keyevent DPAD_DOWN   # UP, LEFT, RIGHT, DPAD_CE
 | `--ez bare true` | Прячет интерфейс, остаётся только сцена |
 | `--ef demo 120` | Сутки в 120 раз быстрее, с 05:00 |
 | `--ez saver true` | Открывает заставку |
-| `--es page saver\|scene\|calendar\|places\|telegram\|remote\|panel\|language` | Сразу открывает страницу настроек |
+| `--es page saver\|scene\|calendar\|places\|telegram\|remote\|panel\|language\|storage\|about\|apps\|weather\|clock` | Сразу открывает страницу настроек |
 | `--es lang ru\|en\|th\|zh\|es\|de\|system` | Меняет язык интерфейса и перезапускает activity. Флаги остаются в интенте, поэтому смену языка пультом проверяй после `am force-stop` и запуска без `--es lang` |
 | `--ez quick true` | Открывает быструю панель (на эмуляторе нет кнопки Prime) |
 | `--ei sleep 5` | Таймер сна сработает через 5 секунд |

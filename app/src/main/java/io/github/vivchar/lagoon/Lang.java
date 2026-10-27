@@ -85,6 +85,46 @@ final class Lang {
 
     /** HH:mm in the chosen language's digits. */
     static String clock(Context c, Date d) {
-        return new SimpleDateFormat("HH:mm", locale(c)).format(d);
+        return new SimpleDateFormat(h12(c) ? "h:mm" : "HH:mm", locale(c)).format(d);
+    }
+
+    // ---- the clock page
+
+    /** Whether the clocks run 12 hours; without AM/PM, as a wall clock: the bay already says whether it is night. */
+    static boolean h12(Context c) {
+        return c.getSharedPreferences("lang", Context.MODE_PRIVATE).getBoolean("h12", false);
+    }
+
+    static void setH12(Context c, boolean on) {
+        c.getSharedPreferences("lang", Context.MODE_PRIVATE).edit().putBoolean("h12", on).apply();
+    }
+
+    /** Time zones the second clock offers: where the family and friends are. */
+    static final String[] ZONES = {"Europe/Moscow", "Europe/London", "America/New_York"};
+
+    /** The second clock's zone, or null when it is off. */
+    static String secondZone(Context c) {
+        return c.getSharedPreferences("lang", Context.MODE_PRIVATE).getString("zone2", null);
+    }
+
+    static void setSecondZone(Context c, String zone) {
+        c.getSharedPreferences("lang", Context.MODE_PRIVATE).edit().putString("zone2", zone).apply();
+    }
+
+    static String zoneName(Context c, String zone) {
+        switch (zone) {
+            case "Europe/Moscow": return c.getString(R.string.zone_moscow);
+            case "Europe/London": return c.getString(R.string.zone_london);
+            default: return c.getString(R.string.zone_new_york);
+        }
+    }
+
+    /** "МОСКВА 15:56" for the line under the date; null when the second clock is off. */
+    static String second(Context c, Date d) {
+        String zone = secondZone(c);
+        if (zone == null) return null;
+        SimpleDateFormat f = new SimpleDateFormat(h12(c) ? "h:mm" : "HH:mm", locale(c));
+        f.setTimeZone(java.util.TimeZone.getTimeZone(zone));
+        return zoneName(c, zone) + " " + f.format(d);
     }
 }
